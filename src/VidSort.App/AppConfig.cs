@@ -13,6 +13,8 @@ public sealed class AppConfig
 
     public string OnConflict { get; set; } = "Rename";
 
+    public string LastCategory { get; set; } = string.Empty;
+
     public static string ConfigPath => Path.Combine(AppContext.BaseDirectory, "config.json");
 
     public static AppConfig Load()
@@ -59,7 +61,8 @@ public sealed class AppConfig
                 .Select(path => path.Trim())
                 .ToArray(),
             ShowHidden = config.ShowHidden,
-            OnConflict = string.IsNullOrWhiteSpace(config.OnConflict) ? "Rename" : config.OnConflict.Trim()
+            OnConflict = string.IsNullOrWhiteSpace(config.OnConflict) ? "Rename" : config.OnConflict.Trim(),
+            LastCategory = (config.LastCategory ?? string.Empty).Replace('\\', '/').Trim('/')
         };
     }
 

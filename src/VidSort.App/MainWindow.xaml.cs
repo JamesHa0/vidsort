@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using VidSort.App.Services;
 using VidSort.App.Views;
 using VidSort.Core;
@@ -64,9 +65,6 @@ public partial class MainWindow : Window
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        AppConfig config = AppConfig.Load();
-        _config = config;
-
         try
         {
             _player = new VlcPlayerService();
@@ -83,15 +81,30 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(config.RootDir) || !Directory.Exists(config.RootDir))
+        await LoadLibraryAsync();
+    }
+
+    private async Task LoadLibraryAsync()
+    {
+        if (_player is null)
         {
-            const string message = "请在 config.json 里把 rootDir 设成你的视频库根目录";
-            FileNameText.Text = message;
-            ProgressText.Text = AppConfig.ConfigPath;
-            ShowToast(message);
+            ShowToast("播放器尚未初始化");
             return;
         }
 
+        AppConfig config = AppConfig.Load();
+        _config = config;
+        UpdateQuickArchiveButton();
+
+        if (string.IsNullOrWhiteSpace(config.RootDir) || !Directory.Exists(config.RootDir))
+        {
+            RootPickerPanel.Visibility = Visibility.Visible;
+            FileNameText.Text = "请选择视频库文件夹";
+            ProgressText.Text = string.Empty;
+            return;
+        }
+
+        RootPickerPanel.Visibility = Visibility.Collapsed;
         try
         {
             _rootDir = Path.GetFullPath(config.RootDir);
@@ -132,6 +145,54 @@ public partial class MainWindow : Window
             ProgressText.Text = ex.Message;
             ShowToast($"加载视频库失败：{ex.Message}");
         }
+    }
+
+    private async void ChooseRootFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        await PickRootFolderAsync();
+    }
+
+    private async void ChangeRootButton_Click(object sender, RoutedEventArgs e)
+    {
+        await PickRootFolderAsync();
+    }
+
+    private async Task PickRootFolderAsync()
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "选择你的视频库文件夹",
+            Multiselect = false
+        };
+
+        string? currentRoot = _config?.RootDir;
+        if (!string.IsNullOrWhiteSpace(currentRoot) && Directory.Exists(currentRoot))
+        {
+            dialog.InitialDirectory = currentRoot;
+        }
+
+        if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FolderName))
+        {
+            return;
+        }
+
+        if (_config is null)
+        {
+            _config = AppConfig.Load();
+        }
+
+        try
+        {
+            _config.RootDir = Path.GetFullPath(dialog.FolderName);
+            _config.Save();
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"保存配置失败：{ex.Message}");
+            return;
+        }
+
+        await LoadLibraryAsync();
     }
 
     private async Task<bool> PlayCurrentAsync()
@@ -217,14 +278,66 @@ public partial class MainWindow : Window
         await PlayNextAsync();
     }
 
-    private void ArchiveButton_Click(object sender, RoutedEventArgs e)
+    private async void QuickArchiveButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        if (_archiveCoordinator is null || _categoryTree is null || _rootDir is null)
+        {
+            ShowToast("视频库尚未加载");
+            return;
+        }
+
+        if (CurrentItem is null)
+        {
+            ShowToast("当前没有可归档的视频");
+            return;
+        }
+
+        string lastCategory = NormalizeCategoryPath(_config?.LastCategory);
+        if (lastCategory.Length > 0)
+        {
+            string? targetDirectory = null;
+            try
+            {
+                targetDirectory = _categoryTree.ResolveTarget(lastCategory);
+            }
+            catch
+            {
+                // 配置里的旧分类无效时退回分类浮层。
+            }
+
+            if (targetDirectory is not null && Directory.Exists(targetDirectory))
+            {
+                await ArchiveCurrentAsync(targetDirectory, lastCategory);
+                return;
+            }
+        }
+
         OpenCategoryOverlay();
     }
 
     private void OpenCategoryButton_Click(object sender, RoutedEventArgs e)
     {
-        OpenCategoryOverlay();
+        if (_isCategoryOverlayOpen)
+        {
+            CloseCategoryOverlay();
+        }
+        else
+        {
+            OpenCategoryOverlay();
+        }
+    }
+
+    private void UpdateQuickArchiveButton()
+    {
+        string lastCategory = NormalizeCategoryPath(_config?.LastCategory);
+        QuickArchiveButton.Content = lastCategory.Length == 0
+            ? "快速归档"
+            : $"归档到「{lastCategory}」";
     }
 
     private void FullscreenButton_Click(object sender, RoutedEventArgs e)
@@ -293,6 +406,8 @@ public partial class MainWindow : Window
         {
             if (ReferenceEquals(source, ControlBar) ||
                 ReferenceEquals(source, TopCategoryButton) ||
+                ReferenceEquals(source, ChangeRootButton) ||
+                ReferenceEquals(source, RootPickerPanel) ||
                 ReferenceEquals(source, CategoryOverlay) ||
                 ReferenceEquals(source, ToastBorder))
             {
@@ -761,7 +876,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        await ArchiveCurrentAsync(targetDirectory, row.RelativePath);
+        bool archived = await ArchiveCurrentAsync(targetDirectory, row.RelativePath);
+        if (archived)
+        {
+            CloseCategoryOverlay();
+        }
     }
 
     private void CreateCategory()
@@ -950,12 +1069,12 @@ public partial class MainWindow : Window
         CategoryList.Focus();
     }
 
-    private async Task ArchiveCurrentAsync(string targetDirectory, string categoryRelativePath)
+    private async Task<bool> ArchiveCurrentAsync(string targetDirectory, string categoryRelativePath)
     {
         if (_archiveCoordinator is null || _rootDir is null || CurrentItem is null)
         {
             ShowToast("当前没有可归档的视频");
-            return;
+            return false;
         }
 
         VideoItem item = CurrentItem;
@@ -966,12 +1085,15 @@ public partial class MainWindow : Window
         _isBusy = true;
         try
         {
+            _player?.Pause();
             MoveOutcome outcome = await _archiveCoordinator.ArchiveAsync(item, targetDirectory);
             if (!outcome.Ok)
             {
                 ShowToast(outcome.Message ?? Mover.Human(outcome.Error));
-                return;
+                return false;
             }
+
+            RememberLastCategory(categoryRelativePath);
 
             if (!outcome.NoOp && outcome.DestPath is not null)
             {
@@ -997,7 +1119,7 @@ public partial class MainWindow : Window
 
                 RefreshOverlayRows();
                 ShowToast(archiveMessage, canUndo);
-                return;
+                return true;
             }
 
             if (_queueIndex >= _queue.Count)
@@ -1013,21 +1135,43 @@ public partial class MainWindow : Window
 
                 RefreshOverlayRows();
                 ShowToast(archiveMessage, canUndo);
-                return;
+                return true;
             }
 
             await PlayCurrentAsync();
             RefreshOverlayRows(categoryRelativePath);
             ShowToast(archiveMessage, canUndo);
+            return true;
         }
         catch (Exception ex)
         {
             ShowToast($"归档失败：{ex.Message}");
+            return false;
         }
         finally
         {
             _isBusy = false;
         }
+    }
+
+    private void RememberLastCategory(string relativePath)
+    {
+        if (_config is null)
+        {
+            return;
+        }
+
+        _config.LastCategory = NormalizeCategoryPath(relativePath);
+        try
+        {
+            _config.Save();
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"保存配置失败：{ex.Message}");
+        }
+
+        UpdateQuickArchiveButton();
     }
 
     private void RefreshLibrary()

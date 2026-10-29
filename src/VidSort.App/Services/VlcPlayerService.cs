@@ -144,7 +144,7 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
             await Task.Delay(120).ConfigureAwait(false);
         }
 
-        ReleaseCore();
+        await ReleaseAsync().ConfigureAwait(false);
 
         Media? media = null;
         bool attached = false;
@@ -165,7 +165,8 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
                 attached = true;
             }
 
-            if (!_mediaPlayer.Play(media))
+            bool started = await Task.Run(() => _mediaPlayer.Play(media)).ConfigureAwait(false);
+            if (!started)
             {
                 throw new InvalidOperationException($"无法播放视频：{absolutePath}");
             }
@@ -176,7 +177,14 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         {
             if (attached)
             {
-                ReleaseCore();
+                try
+                {
+                    await ReleaseAsync().ConfigureAwait(false);
+                }
+                catch
+                {
+                    // 保留原始播放异常。
+                }
             }
             else
             {
@@ -187,10 +195,59 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         }
     }
 
-    public Task ReleaseAsync()
+    public async Task ReleaseAsync()
     {
-        ReleaseCore();
-        return Task.CompletedTask;
+        Media? media;
+        lock (_gate)
+        {
+            if (_disposed || (_media is null && _currentPath is null))
+            {
+                return;
+            }
+
+            _releasing = true;
+            _pendingSeekMs = -1;
+            _currentPath = null;
+            media = _media;
+            _media = null;
+        }
+
+        Task<Exception?> releaseTask = Task.Run(() => ReleasePlayer(media));
+        Task completed = await Task.WhenAny(releaseTask, Task.Delay(3000)).ConfigureAwait(false);
+        if (completed != releaseTask)
+        {
+            lock (_gate)
+            {
+                _releasing = false;
+                _ending = false;
+            }
+
+            WriteReleaseTimeoutLog();
+            return;
+        }
+
+        Exception? failure = await releaseTask.ConfigureAwait(false);
+        lock (_gate)
+        {
+            _releasing = false;
+            _ending = false;
+        }
+
+        if (failure is not null)
+        {
+            throw new InvalidOperationException("释放视频资源失败。", failure);
+        }
+    }
+
+    public void Pause()
+    {
+        lock (_gate)
+        {
+            if (!_disposed && _currentPath is not null)
+            {
+                _mediaPlayer.Pause();
+            }
+        }
     }
 
     public void TogglePause()
@@ -284,23 +341,8 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         }
     }
 
-    private void ReleaseCore()
+    private Exception? ReleasePlayer(Media? media)
     {
-        Media? media;
-        lock (_gate)
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _releasing = true;
-            _pendingSeekMs = -1;
-            _currentPath = null;
-            media = _media;
-            _media = null;
-        }
-
         Exception? failure = null;
         try
         {
@@ -311,25 +353,48 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
             failure = ex;
         }
 
+        bool clearMedia;
+        lock (_gate)
+        {
+            clearMedia = _media is null && _currentPath is null;
+        }
+
+        if (clearMedia)
+        {
+            try
+            {
+                _mediaPlayer.Media = null;
+            }
+            catch (Exception ex)
+            {
+                failure ??= ex;
+            }
+        }
+
         try
         {
-            _mediaPlayer.Media = null;
+            media?.Dispose();
         }
         catch (Exception ex)
         {
             failure ??= ex;
         }
 
-        media?.Dispose();
-        lock (_gate)
-        {
-            _releasing = false;
-            _ending = false;
-        }
+        return failure;
+    }
 
-        if (failure is not null)
+    private static void WriteReleaseTimeoutLog()
+    {
+        try
         {
-            throw new InvalidOperationException("释放视频资源失败。", failure);
+            string directory = Path.GetDirectoryName(AppConfig.ConfigPath) ?? AppContext.BaseDirectory;
+            Directory.CreateDirectory(directory);
+            string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} ReleaseAsync timeout{Environment.NewLine}";
+            File.AppendAllText(Path.Combine(directory, "logs.txt"), line);
+        }
+        catch
+        {
+            // 诊断日志失败不应影响释放流程。
         }
     }
 

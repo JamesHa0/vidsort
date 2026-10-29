@@ -112,17 +112,65 @@
             <Grid x:Name="VideoSurface"
                   Background="Transparent"
                   MouseLeftButtonDown="VideoSurface_MouseLeftButtonDown">
-                <Button x:Name="TopCategoryButton"
-                        Margin="0,16,16,0"
-                        Padding="14,8"
-                        Panel.ZIndex="4"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Top"
+                <StackPanel Margin="0,16,16,0"
+                            Panel.ZIndex="4"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Orientation="Horizontal">
+                    <Button x:Name="ChangeRootButton"
+                            Padding="10,8"
+                            Background="#CC000000"
+                            Click="ChangeRootButton_Click"
+                            Content="更换目录"
+                            FontSize="12"
+                            Style="{StaticResource FlatButtonStyle}" />
+                    <Button x:Name="TopCategoryButton"
+                            Margin="4,0,0,0"
+                            Padding="14,8"
+                            Background="#CC000000"
+                            Click="OpenCategoryButton_Click"
+                            Content="分类"
+                            FontSize="13"
+                            Style="{StaticResource FlatButtonStyle}" />
+                </StackPanel>
+
+                <Border x:Name="RootPickerPanel"
+                        Panel.ZIndex="90"
                         Background="#CC000000"
-                        Click="OpenCategoryButton_Click"
-                        Content="分类"
-                        FontSize="13"
-                        Style="{StaticResource FlatButtonStyle}" />
+                        Visibility="Collapsed">
+                    <Border Width="440"
+                            Padding="28,24"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Background="#F21C1C1C"
+                            BorderBrush="#66FFFFFF"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                        <StackPanel>
+                            <TextBlock HorizontalAlignment="Center"
+                                       Foreground="White"
+                                       FontSize="20"
+                                       FontWeight="SemiBold"
+                                       Text="选择你的视频库文件夹" />
+                            <TextBlock Margin="0,12,0,0"
+                                       HorizontalAlignment="Center"
+                                       Foreground="#FFD0D0D0"
+                                       FontSize="13"
+                                       Text="程序会把分类建成该目录下的同名子文件夹"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap" />
+                            <Button x:Name="ChooseRootFolderButton"
+                                    Margin="0,22,0,0"
+                                    Padding="18,9"
+                                    HorizontalAlignment="Center"
+                                    Background="#33FFFFFF"
+                                    Click="ChooseRootFolderButton_Click"
+                                    Content="选择文件夹…"
+                                    FontSize="14"
+                                    Style="{StaticResource FlatButtonStyle}" />
+                        </StackPanel>
+                    </Border>
+                </Border>
 
                 <Border x:Name="ControlBar"
                         Padding="16,8,16,10"
@@ -232,10 +280,11 @@
                                        FontSize="12"
                                        Text="80%" />
 
-                            <Button Grid.Column="7"
+                            <Button x:Name="QuickArchiveButton"
+                                    Grid.Column="7"
                                     Margin="0,0,4,0"
-                                    Click="ArchiveButton_Click"
-                                    Content="归档…"
+                                    Click="QuickArchiveButton_Click"
+                                    Content="快速归档"
                                     FontSize="13"
                                     Style="{StaticResource FlatButtonStyle}" />
                             <Button Grid.Column="8"
