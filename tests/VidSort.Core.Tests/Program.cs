@@ -81,7 +81,16 @@ internal static class Program
             ("目标目录只读", ReadOnlyTargetAsync),
             ("跨卷复制（/home → /dev/shm）", CrossVolumeCopyAsync),
             ("强制跨卷分支（同盘也复制）", ForcedCopyBranchAsync),
-            ("复制中途取消", CancelDuringCopyAsync)
+            ("复制中途取消", CancelDuringCopyAsync),
+            ("分类树：扫描目录树并过滤隐藏目录", CategoryTests.ScanAsync),
+            ("分类树：隐藏与恢复", CategoryTests.HideUnhideAsync),
+            ("分类名：非法名全部拦截", CategoryTests.InvalidNamesAsync),
+            ("分类名：合法名放行", CategoryTests.ValidNamesAsync),
+            ("分类树：新建分类惰性", CategoryTests.RegisterLazyAsync),
+            ("分类树：ResolveTarget 解析", CategoryTests.ResolveTargetAsync),
+            ("分类树：重命名并同步隐藏列表", CategoryTests.RenameAsync),
+            ("分类树：层级上限", CategoryTests.DepthLimitAsync),
+            ("扩展名白名单", CategoryTests.VideoExtensionWhitelistAsync)
         };
 
         int passed = 0;
