@@ -90,7 +90,13 @@ internal static class Program
             ("分类树：ResolveTarget 解析", CategoryTests.ResolveTargetAsync),
             ("分类树：重命名并同步隐藏列表", CategoryTests.RenameAsync),
             ("分类树：层级上限", CategoryTests.DepthLimitAsync),
-            ("扩展名白名单", CategoryTests.VideoExtensionWhitelistAsync)
+            ("扩展名白名单", CategoryTests.VideoExtensionWhitelistAsync),
+            ("索引扫描：过滤规则与分类路径", IndexTests.ScanFiltersAndCategoriesAsync),
+            ("索引增量：未变项复用元数据", IndexTests.IncrementalReusesMetadataAsync),
+            ("索引增量：变更项清空元数据", IndexTests.IncrementalChangeClearsMetadataAsync),
+            ("索引持久化：Save/Load 往返", IndexTests.SaveLoadRoundTripAsync),
+            ("索引归档：ApplyMove 同步路径", IndexTests.ApplyMoveUpdatesPathAsync),
+            ("播放队列：排序、分类与可复现洗牌", IndexTests.PlayQueueOrderingAndShuffleAsync)
         };
 
         int passed = 0;
