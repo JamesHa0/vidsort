@@ -11,12 +11,23 @@ public partial class MainWindow : Window
 {
     private readonly DispatcherTimer _progressTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly Mover _mover = new();
     private VlcPlayerService? _player;
     private List<VideoItem> _queue = new();
+    private List<OverlayRow> _overlayRows = new();
+    private ArchiveJournal _journal = new();
+    private ArchiveCoordinator? _archiveCoordinator;
+    private LibraryIndex? _index;
+    private CategoryTree? _categoryTree;
+    private List<CategoryNode> _categoryNodes = new();
+    private AppConfig? _config;
+    private string? _journalPath;
     private string? _rootDir;
     private int _queueIndex = -1;
     private bool _isClosing;
     private bool _isFullscreen;
+    private bool _isCategoryOverlayOpen;
+    private bool _isBusy;
     private WindowState _previousWindowState;
     private WindowStyle _previousWindowStyle;
     private ResizeMode _previousResizeMode;
@@ -36,6 +47,7 @@ public partial class MainWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         AppConfig config = AppConfig.Load();
+        _config = config;
 
         try
         {
@@ -64,12 +76,25 @@ public partial class MainWindow : Window
         try
         {
             _rootDir = Path.GetFullPath(config.RootDir);
+            _journalPath = Path.Combine(
+                Path.GetDirectoryName(AppConfig.ConfigPath) ?? AppContext.BaseDirectory,
+                "journal.json");
 
-            var categoryTree = new CategoryTree(_rootDir, config.HiddenCategories);
-            categoryTree.Scan();
+            try
+            {
+                _journal = ArchiveJournal.Load(_journalPath);
+            }
+            catch
+            {
+                _journal = new ArchiveJournal();
+            }
 
-            ScanResult scan = new LibraryIndex(_rootDir).Scan();
+            _index = new LibraryIndex(_rootDir);
+            ScanResult scan = _index.Scan();
+            RescanCategories();
+            _archiveCoordinator = new ArchiveCoordinator(_player, _mover, _index);
             _queue = PlayQueue.Build(scan.Items, null, false);
+            RefreshOverlayRows();
 
             if (_queue.Count == 0)
             {
@@ -155,9 +180,389 @@ public partial class MainWindow : Window
         await PlayCurrentAsync();
     }
 
+    private VideoItem? CurrentItem =>
+        _queueIndex >= 0 && _queueIndex < _queue.Count ? _queue[_queueIndex] : null;
+
+    private void RescanCategories()
+    {
+        if (_rootDir is null)
+        {
+            return;
+        }
+
+        _categoryTree = new CategoryTree(_rootDir, _config?.HiddenCategories);
+        _categoryNodes = _categoryTree.Scan();
+    }
+
+    private void RefreshOverlayRows(string? preferredRelativePath = null)
+    {
+        string currentCategory = CurrentItem?.CategoryRelativePath ?? string.Empty;
+        _overlayRows = CategoryOverlayModel.Build(_categoryNodes, currentCategory);
+        CategoryList.ItemsSource = _overlayRows;
+
+        int selectedIndex = preferredRelativePath is null
+            ? -1
+            : _overlayRows.FindIndex(row =>
+                !row.IsRefresh &&
+                string.Equals(row.RelativePath, preferredRelativePath, StringComparison.Ordinal));
+        if (selectedIndex < 0)
+        {
+            selectedIndex = _overlayRows.FindIndex(row => row.IsSelected);
+        }
+
+        CategoryList.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        if (CategoryList.SelectedIndex >= 0)
+        {
+            CategoryList.ScrollIntoView(_overlayRows[CategoryList.SelectedIndex]);
+        }
+    }
+
+    private void OpenCategoryOverlay()
+    {
+        if (_index is null || _rootDir is null)
+        {
+            ShowToast("视频库尚未加载");
+            return;
+        }
+
+        RefreshOverlayRows();
+        _isCategoryOverlayOpen = true;
+        CategoryOverlay.Visibility = Visibility.Visible;
+        CategoryList.Focus();
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (_isCategoryOverlayOpen)
+            {
+                CategoryList.Focus();
+            }
+        }, DispatcherPriority.Input);
+    }
+
+    private void CloseCategoryOverlay()
+    {
+        _isCategoryOverlayOpen = false;
+        CategoryOverlay.Visibility = Visibility.Collapsed;
+        if (!PlayerView.Focus())
+        {
+            Focus();
+        }
+
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (!_isCategoryOverlayOpen && !PlayerView.Focus())
+            {
+                Focus();
+            }
+        }, DispatcherPriority.Input);
+    }
+
+    private void MoveOverlaySelection(int delta)
+    {
+        if (_overlayRows.Count == 0)
+        {
+            return;
+        }
+
+        int index = CategoryList.SelectedIndex;
+        index = index < 0 ? 0 : Math.Clamp(index + delta, 0, _overlayRows.Count - 1);
+        CategoryList.SelectedIndex = index;
+        CategoryList.ScrollIntoView(_overlayRows[index]);
+        CategoryList.Focus();
+    }
+
+    private async Task ArchiveSelectedCategoryAsync()
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        if (CategoryList.SelectedItem is not OverlayRow row)
+        {
+            ShowToast("请选择分类");
+            return;
+        }
+
+        if (row.IsRefresh)
+        {
+            RefreshLibrary();
+            return;
+        }
+
+        if (_archiveCoordinator is null || _categoryTree is null || _rootDir is null)
+        {
+            ShowToast("视频库尚未加载");
+            return;
+        }
+
+        if (CurrentItem is null)
+        {
+            ShowToast("当前没有可归档的视频");
+            return;
+        }
+
+        string targetDirectory;
+        try
+        {
+            targetDirectory = _categoryTree.ResolveTarget(row.RelativePath);
+        }
+        catch (Exception ex)
+        {
+            ShowToast(ex.Message);
+            return;
+        }
+
+        await ArchiveCurrentAsync(targetDirectory, row.RelativePath);
+    }
+
+    private async Task ArchiveCurrentAsync(string targetDirectory, string categoryRelativePath)
+    {
+        if (_archiveCoordinator is null || _rootDir is null || CurrentItem is null)
+        {
+            ShowToast("当前没有可归档的视频");
+            return;
+        }
+
+        VideoItem item = CurrentItem;
+        string sourcePath = Path.Combine(
+            _rootDir,
+            item.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        _isBusy = true;
+        try
+        {
+            MoveOutcome outcome = await _archiveCoordinator.ArchiveAsync(item, targetDirectory);
+            if (!outcome.Ok)
+            {
+                ShowToast(outcome.Message ?? Mover.Human(outcome.Error));
+                return;
+            }
+
+            if (!outcome.NoOp && outcome.DestPath is not null)
+            {
+                _journal.Record(sourcePath, outcome.DestPath);
+                SaveJournal();
+            }
+
+            _queue.RemoveAt(_queueIndex);
+
+            if (_queue.Count == 0)
+            {
+                _queueIndex = -1;
+                _progressTimer.Stop();
+                FileNameText.Text = "已全部归档";
+                ProgressText.Text = string.Empty;
+                if (_player is not null)
+                {
+                    await _player.ReleaseAsync();
+                }
+
+                RefreshOverlayRows();
+                ShowToast("已全部归档");
+                return;
+            }
+
+            if (_queueIndex >= _queue.Count)
+            {
+                _queueIndex = _queue.Count;
+                _progressTimer.Stop();
+                FileNameText.Text = "已归档";
+                ProgressText.Text = "没有下一条视频";
+                if (_player is not null)
+                {
+                    await _player.ReleaseAsync();
+                }
+
+                RefreshOverlayRows();
+                ShowToast("已归档");
+                return;
+            }
+
+            await PlayCurrentAsync();
+            RefreshOverlayRows(categoryRelativePath);
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"归档失败：{ex.Message}");
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private void RefreshLibrary()
+    {
+        if (_index is null || _rootDir is null)
+        {
+            ShowToast("视频库尚未加载");
+            return;
+        }
+
+        try
+        {
+            ScanResult scan = _index.Scan(_index.Items);
+            RescanCategories();
+            RebindQueue(scan.Items);
+            RefreshOverlayRows();
+            ShowToast($"已刷新，共 {scan.Items.Count} 个视频");
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"刷新失败：{ex.Message}");
+        }
+    }
+
+    private void RebindQueue(IReadOnlyList<VideoItem> scannedItems)
+    {
+        string? currentRelativePath = CurrentItem?.RelativePath;
+        var scannedByPath = new Dictionary<string, VideoItem>(StringComparer.Ordinal);
+        foreach (VideoItem item in scannedItems)
+        {
+            scannedByPath[item.RelativePath] = item;
+        }
+
+        _queue = _queue
+            .Where(item => scannedByPath.ContainsKey(item.RelativePath))
+            .Select(item => scannedByPath[item.RelativePath])
+            .ToList();
+
+        if (_queue.Count == 0)
+        {
+            _queueIndex = -1;
+            return;
+        }
+
+        int currentIndex = _queue.FindIndex(item =>
+            currentRelativePath is not null &&
+            string.Equals(item.RelativePath, currentRelativePath, StringComparison.Ordinal));
+        if (currentIndex >= 0)
+        {
+            _queueIndex = currentIndex;
+        }
+        else if (_queueIndex < 0)
+        {
+            _queueIndex = 0;
+        }
+        else
+        {
+            _queueIndex = Math.Clamp(_queueIndex, 0, _queue.Count - 1);
+        }
+    }
+
+    private int InsertQueueItem(VideoItem item)
+    {
+        int insertAt = _queue.FindIndex(existing =>
+            string.CompareOrdinal(existing.RelativePath, item.RelativePath) > 0);
+        if (insertAt < 0)
+        {
+            insertAt = _queue.Count;
+        }
+
+        _queue.Insert(insertAt, item);
+        if (_queueIndex >= insertAt)
+        {
+            _queueIndex++;
+        }
+
+        return insertAt;
+    }
+
+    private async Task UndoLastArchiveAsync()
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        if (_journal.Count == 0)
+        {
+            ShowToast("没有可撤销的归档");
+            return;
+        }
+
+        if (_index is null || _rootDir is null)
+        {
+            ShowToast("视频库尚未加载");
+            return;
+        }
+
+        bool hadCurrentItem = CurrentItem is not null;
+
+        _isBusy = true;
+        try
+        {
+            MoveOutcome outcome = await ArchiveUndo.UndoLastAsync(_journal, _mover);
+            SaveJournal();
+            if (!outcome.Ok)
+            {
+                ShowToast(outcome.Message ?? Mover.Human(outcome.Error));
+                return;
+            }
+
+            ScanResult scan = _index.Scan(_index.Items);
+            RescanCategories();
+            RebindQueue(scan.Items);
+            int restoredIndex = -1;
+            VideoItem? restored = FindRestoredItem(scan.Items, outcome.DestPath);
+            if (restored is not null &&
+                !_queue.Any(item => string.Equals(item.RelativePath, restored.RelativePath, StringComparison.Ordinal)))
+            {
+                restoredIndex = InsertQueueItem(restored);
+            }
+
+            RefreshOverlayRows();
+            ShowToast("已撤销");
+
+            if (!hadCurrentItem && _queue.Count > 0)
+            {
+                _queueIndex = restoredIndex >= 0 ? restoredIndex : 0;
+                await PlayCurrentAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"撤销失败：{ex.Message}");
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private VideoItem? FindRestoredItem(IEnumerable<VideoItem> items, string? restoredPath)
+    {
+        if (_rootDir is null || string.IsNullOrWhiteSpace(restoredPath))
+        {
+            return null;
+        }
+
+        string relativePath = Path.GetRelativePath(_rootDir, Path.GetFullPath(restoredPath))
+            .Replace(Path.DirectorySeparatorChar, '/');
+        return items.FirstOrDefault(item =>
+            string.Equals(item.RelativePath, relativePath, StringComparison.Ordinal));
+    }
+
+    private void SaveJournal()
+    {
+        if (_journalPath is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _journal.Save(_journalPath);
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"保存撤销记录失败：{ex.Message}");
+        }
+    }
+
     private void OnPlaybackEnded(object? sender, EventArgs e)
     {
-        if (_isClosing)
+        if (_isClosing || _isBusy)
         {
             return;
         }
@@ -174,6 +579,45 @@ public partial class MainWindow : Window
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        bool control = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+
+        if (control && e.Key == Key.Z)
+        {
+            e.Handled = true;
+            await UndoLastArchiveAsync();
+            return;
+        }
+
+        if (e.Key == Key.F5)
+        {
+            e.Handled = true;
+            RefreshLibrary();
+            return;
+        }
+
+        if (_isCategoryOverlayOpen)
+        {
+            switch (e.Key)
+            {
+                case Key.Tab:
+                case Key.Escape:
+                    CloseCategoryOverlay();
+                    e.Handled = true;
+                    return;
+                case Key.Up:
+                    MoveOverlaySelection(-1);
+                    e.Handled = true;
+                    return;
+                case Key.Down:
+                    MoveOverlaySelection(1);
+                    e.Handled = true;
+                    return;
+                case Key.Enter:
+                    e.Handled = true;
+                    await ArchiveSelectedCategoryAsync();
+                    return;
+            }
+        }
 
         switch (e.Key)
         {
@@ -235,7 +679,7 @@ public partial class MainWindow : Window
                 }
                 break;
             case Key.Tab:
-                ShowToast("分类浮层将在下一步接入");
+                OpenCategoryOverlay();
                 e.Handled = true;
                 break;
         }

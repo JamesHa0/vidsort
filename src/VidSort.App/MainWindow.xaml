@@ -12,61 +12,117 @@
         Loaded="Window_Loaded"
         PreviewKeyDown="Window_PreviewKeyDown"
         Closed="Window_Closed">
-    <vlc:VideoView x:Name="PlayerView"
-                   HorizontalAlignment="Stretch"
-                   VerticalAlignment="Stretch">
-        <Grid>
-            <Border x:Name="InfoBar"
-                    VerticalAlignment="Bottom"
-                    Padding="16,10"
-                    Background="#B3000000">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+    <Grid>
+        <vlc:VideoView x:Name="PlayerView"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Stretch">
+            <Grid>
+                <Border x:Name="InfoBar"
+                        VerticalAlignment="Bottom"
+                        Padding="16,10"
+                        Background="#B3000000">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                        <TextBlock x:Name="FileNameText"
-                                   Foreground="White"
-                                   FontSize="15"
-                                   FontWeight="SemiBold"
-                                   Text="正在准备视频…"
-                                   TextTrimming="CharacterEllipsis" />
-                        <TextBlock x:Name="ProgressText"
-                                   Margin="0,4,0,0"
-                                   Foreground="#FFD0D0D0"
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock x:Name="FileNameText"
+                                       Foreground="White"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Text="正在准备视频…"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="ProgressText"
+                                       Margin="0,4,0,0"
+                                       Foreground="#FFD0D0D0"
+                                       FontSize="12"
+                                       Text="00:00" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Column="1"
+                                   Margin="24,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="#FFC8C8C8"
                                    FontSize="12"
-                                   Text="00:00" />
-                    </StackPanel>
+                                   TextAlignment="Right"
+                                   TextWrapping="Wrap"
+                                   Text="空格 播放/暂停 · ←/→ 5秒 · Shift 60秒 · ↑/↓ 音量 · N/P 上下条 · F 全屏 · M 静音 · Esc 退出全屏" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </vlc:VideoView>
 
-                    <TextBlock Grid.Column="1"
-                               Margin="24,0,0,0"
-                               VerticalAlignment="Center"
-                               Foreground="#FFC8C8C8"
-                               FontSize="12"
-                               TextAlignment="Right"
-                               TextWrapping="Wrap"
-                               Text="空格 播放/暂停 · ←/→ 5秒 · Shift 60秒 · ↑/↓ 音量 · N/P 上下条 · F 全屏 · M 静音 · Esc 退出全屏" />
-                </Grid>
-            </Border>
-
-            <Border x:Name="ToastBorder"
-                    MaxWidth="480"
-                    Margin="0,0,24,96"
-                    Padding="12,8"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Bottom"
-                    Background="#E6222222"
+        <Border x:Name="CategoryOverlay"
+                Background="#99000000"
+                Visibility="Collapsed">
+            <Border Width="460"
+                    MaxHeight="560"
+                    Margin="32"
+                    Padding="16"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    Background="#F21C1C1C"
                     BorderBrush="#66FFFFFF"
                     BorderThickness="1"
-                    CornerRadius="6"
-                    Visibility="Collapsed">
-                <TextBlock x:Name="ToastText"
-                           Foreground="White"
-                           FontSize="13"
-                           TextWrapping="Wrap" />
+                    CornerRadius="8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Foreground="White"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="选择分类" />
+
+                    <ListBox x:Name="CategoryList"
+                             Grid.Row="1"
+                             Margin="0,12,0,12"
+                             Padding="4"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             DisplayMemberPath="DisplayText"
+                             FontSize="14"
+                             Foreground="White"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Padding" Value="8,6" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
+
+                    <TextBlock Grid.Row="2"
+                               Foreground="#FFB8B8B8"
+                               FontSize="12"
+                               Text="↑/↓ 选择 · Enter 归档 · F5 刷新 · Esc 关闭" />
+                </Grid>
             </Border>
-        </Grid>
-    </vlc:VideoView>
+        </Border>
+
+        <Border x:Name="ToastBorder"
+                MaxWidth="480"
+                Margin="0,0,24,96"
+                Padding="12,8"
+                Panel.ZIndex="10"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Background="#E6222222"
+                BorderBrush="#66FFFFFF"
+                BorderThickness="1"
+                CornerRadius="6"
+                Visibility="Collapsed">
+            <TextBlock x:Name="ToastText"
+                       Foreground="White"
+                       FontSize="13"
+                       TextWrapping="Wrap" />
+        </Border>
+    </Grid>
 </Window>
