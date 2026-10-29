@@ -88,6 +88,7 @@
                              DisplayMemberPath="DisplayText"
                              FontSize="14"
                              Foreground="White"
+                             SelectionChanged="CategoryList_SelectionChanged"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              ScrollViewer.VerticalScrollBarVisibility="Auto">
                         <ListBox.ItemContainerStyle>
@@ -102,7 +103,8 @@
                     <TextBlock Grid.Row="2"
                                Foreground="#FFB8B8B8"
                                FontSize="12"
-                               Text="↑/↓ 选择 · Enter 归档 · F5 刷新 · Esc 关闭" />
+                               TextWrapping="Wrap"
+                               Text="↑/↓ 选择 · Enter 归档/新建/恢复 · F2 改名 · Del 隐藏 · Shift+H 显示隐藏 · F5 刷新 · Esc 关闭" />
                 </Grid>
             </Border>
         </Border>

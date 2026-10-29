@@ -3,12 +3,15 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using VidSort.App.Services;
+using VidSort.App.Views;
 using VidSort.Core;
 
 namespace VidSort.App;
 
 public partial class MainWindow : Window
 {
+    private const string NewCategoryRowLabel = "＋ 新建分类…";
+    private const string NewCategoryRowMarker = "\0new-category";
     private readonly DispatcherTimer _progressTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly Mover _mover = new();
@@ -23,6 +26,7 @@ public partial class MainWindow : Window
     private AppConfig? _config;
     private string? _journalPath;
     private string? _rootDir;
+    private string _lastSelectedCategoryRelativePath = string.Empty;
     private int _queueIndex = -1;
     private bool _isClosing;
     private bool _isFullscreen;
@@ -196,14 +200,33 @@ public partial class MainWindow : Window
 
     private void RefreshOverlayRows(string? preferredRelativePath = null)
     {
-        string currentCategory = CurrentItem?.CategoryRelativePath ?? string.Empty;
+        string currentCategory = NormalizeCategoryPath(CurrentItem?.CategoryRelativePath);
         _overlayRows = CategoryOverlayModel.Build(_categoryNodes, currentCategory);
+
+        if (_config?.ShowHidden == true && _categoryTree is not null)
+        {
+            var hiddenRows = _categoryTree.Hidden
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Select(path => CreateHiddenRow(path, currentCategory))
+                .ToList();
+            int refreshIndex = _overlayRows.FindIndex(row => row.IsRefresh);
+            _overlayRows.InsertRange(refreshIndex >= 0 ? refreshIndex : _overlayRows.Count, hiddenRows);
+        }
+
+        _overlayRows.Add(new OverlayRow
+        {
+            DisplayText = NewCategoryRowLabel,
+            RelativePath = NewCategoryRowMarker
+        });
+
         CategoryList.ItemsSource = _overlayRows;
 
         int selectedIndex = preferredRelativePath is null
             ? -1
             : _overlayRows.FindIndex(row =>
                 !row.IsRefresh &&
+                !IsNewCategoryRow(row) &&
                 string.Equals(row.RelativePath, preferredRelativePath, StringComparison.Ordinal));
         if (selectedIndex < 0)
         {
@@ -217,6 +240,46 @@ public partial class MainWindow : Window
         }
     }
 
+    private static OverlayRow CreateHiddenRow(string relativePath, string currentCategory)
+    {
+        string normalized = NormalizeCategoryPath(relativePath);
+        int depth = normalized.Count(ch => ch == '/');
+        string indent = string.Concat(Enumerable.Repeat("　　", depth));
+        bool isSelected = string.Equals(normalized, currentCategory, StringComparison.Ordinal);
+
+        return new OverlayRow
+        {
+            DisplayText = (isSelected ? "● " : string.Empty) + indent + "[隐藏] " + GetCategoryName(normalized),
+            RelativePath = normalized,
+            IsSelected = isSelected
+        };
+    }
+
+    private static bool IsNewCategoryRow(OverlayRow row) =>
+        string.Equals(row.RelativePath, NewCategoryRowMarker, StringComparison.Ordinal);
+
+    private static string NormalizeCategoryPath(string? relativePath) =>
+        (relativePath ?? string.Empty).Replace('\\', '/').Trim('/');
+
+    private static string GetCategoryName(string relativePath)
+    {
+        int slash = relativePath.LastIndexOf('/');
+        return slash >= 0 ? relativePath[(slash + 1)..] : relativePath;
+    }
+
+    private void CategoryList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!_isCategoryOverlayOpen || CategoryList.SelectedItem is not OverlayRow row)
+        {
+            return;
+        }
+
+        if (!row.IsRefresh && !IsNewCategoryRow(row))
+        {
+            _lastSelectedCategoryRelativePath = NormalizeCategoryPath(row.RelativePath);
+        }
+    }
+
     private void OpenCategoryOverlay()
     {
         if (_index is null || _rootDir is null)
@@ -225,8 +288,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        RefreshOverlayRows();
+        _lastSelectedCategoryRelativePath = NormalizeCategoryPath(CurrentItem?.CategoryRelativePath);
         _isCategoryOverlayOpen = true;
+        RefreshOverlayRows();
         CategoryOverlay.Visibility = Visibility.Visible;
         CategoryList.Focus();
         Dispatcher.InvokeAsync(() =>
@@ -289,6 +353,20 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (IsNewCategoryRow(row))
+        {
+            CreateCategory();
+            return;
+        }
+
+        if (_categoryTree is not null &&
+            row.RelativePath.Length > 0 &&
+            _categoryTree.IsHidden(row.RelativePath))
+        {
+            UnhideCategory(row.RelativePath);
+            return;
+        }
+
         if (_archiveCoordinator is null || _categoryTree is null || _rootDir is null)
         {
             ShowToast("视频库尚未加载");
@@ -313,6 +391,192 @@ public partial class MainWindow : Window
         }
 
         await ArchiveCurrentAsync(targetDirectory, row.RelativePath);
+    }
+
+    private void CreateCategory()
+    {
+        if (_categoryTree is null || _config is null)
+        {
+            ShowToast("视频库尚未加载");
+            return;
+        }
+
+        string parentRelativePath = _lastSelectedCategoryRelativePath;
+        string parentLabel = parentRelativePath.Length == 0
+            ? "库根"
+            : GetCategoryName(parentRelativePath);
+        string? name = TextInputDialog.Show(
+            this,
+            $"在 {parentLabel} 下新建分类",
+            string.Empty,
+            CategoryName.Validate);
+        if (name is null)
+        {
+            CategoryList.Focus();
+            return;
+        }
+
+        try
+        {
+            string relativePath = _categoryTree.Register(parentRelativePath, name);
+            string target = _categoryTree.ResolveTarget(relativePath);
+            if (Directory.Exists(target) || File.Exists(target))
+            {
+                ShowToast($"分类已存在：{name}");
+                CategoryList.Focus();
+                return;
+            }
+
+            Directory.CreateDirectory(target);
+            _config.Save();
+            RescanCategories();
+            RefreshOverlayRows(relativePath);
+            ShowToast($"已新建分类 {name}");
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"新建分类失败：{ex.Message}");
+        }
+
+        CategoryList.Focus();
+    }
+
+    private void RenameSelectedCategory()
+    {
+        if (_categoryTree is null || _config is null)
+        {
+            ShowToast("视频库尚未加载");
+            return;
+        }
+
+        if (CategoryList.SelectedItem is not OverlayRow row)
+        {
+            ShowToast("请选择分类");
+            return;
+        }
+
+        if (row.IsRefresh || IsNewCategoryRow(row) || row.RelativePath.Length == 0)
+        {
+            ShowToast("这一行不能改名");
+            return;
+        }
+
+        string oldName = GetCategoryName(row.RelativePath);
+        string? newName = TextInputDialog.Show(
+            this,
+            "重命名分类",
+            oldName,
+            CategoryName.Validate);
+        if (newName is null)
+        {
+            CategoryList.Focus();
+            return;
+        }
+
+        try
+        {
+            string newRelativePath = _categoryTree.Rename(row.RelativePath, newName);
+            _config.HiddenCategories = _categoryTree.ExportHidden().ToArray();
+            _config.Save();
+            RescanCategories();
+            RefreshOverlayRows(newRelativePath);
+            ShowToast($"已重命名为 {newName}");
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"重命名失败：{ex.Message}");
+        }
+
+        CategoryList.Focus();
+    }
+
+    private void HideSelectedCategory()
+    {
+        if (_categoryTree is null || _config is null)
+        {
+            ShowToast("视频库尚未加载");
+            return;
+        }
+
+        if (CategoryList.SelectedItem is not OverlayRow row)
+        {
+            ShowToast("请选择分类");
+            return;
+        }
+
+        if (row.IsRefresh || IsNewCategoryRow(row) || row.RelativePath.Length == 0)
+        {
+            ShowToast("这一行不能隐藏");
+            return;
+        }
+
+        try
+        {
+            _categoryTree.Hide(row.RelativePath);
+            _config.HiddenCategories = _categoryTree.ExportHidden().ToArray();
+            _config.Save();
+            RescanCategories();
+            RefreshOverlayRows(row.RelativePath);
+            ShowToast("已从菜单隐藏（磁盘目录未动）");
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"隐藏失败：{ex.Message}");
+        }
+
+        CategoryList.Focus();
+    }
+
+    private void UnhideCategory(string relativePath)
+    {
+        if (_categoryTree is null || _config is null)
+        {
+            ShowToast("视频库尚未加载");
+            return;
+        }
+
+        string categoryName = GetCategoryName(NormalizeCategoryPath(relativePath));
+        try
+        {
+            _categoryTree.Unhide(relativePath);
+            _config.HiddenCategories = _categoryTree.ExportHidden().ToArray();
+            _config.Save();
+            RescanCategories();
+            RefreshOverlayRows(relativePath);
+            ShowToast($"已恢复分类 {categoryName}");
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"恢复分类失败：{ex.Message}");
+        }
+
+        CategoryList.Focus();
+    }
+
+    private void ToggleShowHidden()
+    {
+        if (_config is null)
+        {
+            ShowToast("视频库尚未加载");
+            return;
+        }
+
+        bool previous = _config.ShowHidden;
+        _config.ShowHidden = !previous;
+        try
+        {
+            _config.Save();
+            RescanCategories();
+            RefreshOverlayRows();
+            ShowToast(_config.ShowHidden ? "已显示隐藏分类" : "已收起隐藏分类");
+        }
+        catch (Exception ex)
+        {
+            _config.ShowHidden = previous;
+            ShowToast($"保存配置失败：{ex.Message}");
+        }
+
+        CategoryList.Focus();
     }
 
     private async Task ArchiveCurrentAsync(string targetDirectory, string categoryRelativePath)
@@ -610,6 +874,18 @@ public partial class MainWindow : Window
                     return;
                 case Key.Down:
                     MoveOverlaySelection(1);
+                    e.Handled = true;
+                    return;
+                case Key.F2:
+                    RenameSelectedCategory();
+                    e.Handled = true;
+                    return;
+                case Key.Delete:
+                    HideSelectedCategory();
+                    e.Handled = true;
+                    return;
+                case Key.H when shift:
+                    ToggleShowHidden();
                     e.Handled = true;
                     return;
                 case Key.Enter:

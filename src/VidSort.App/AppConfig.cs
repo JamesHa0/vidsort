@@ -9,6 +9,8 @@ public sealed class AppConfig
 
     public string[] HiddenCategories { get; set; } = Array.Empty<string>();
 
+    public bool ShowHidden { get; set; }
+
     public string OnConflict { get; set; } = "Rename";
 
     public static string ConfigPath => Path.Combine(AppContext.BaseDirectory, "config.json");
@@ -35,6 +37,18 @@ public sealed class AppConfig
         }
     }
 
+    public void Save()
+    {
+        string path = ConfigPath;
+        string? directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(path, JsonSerializer.Serialize(this, JsonOptions));
+    }
+
     private static AppConfig Normalize(AppConfig config)
     {
         return new AppConfig
@@ -44,6 +58,7 @@ public sealed class AppConfig
                 .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Select(path => path.Trim())
                 .ToArray(),
+            ShowHidden = config.ShowHidden,
             OnConflict = string.IsNullOrWhiteSpace(config.OnConflict) ? "Rename" : config.OnConflict.Trim()
         };
     }
