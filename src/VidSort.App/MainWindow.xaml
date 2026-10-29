@@ -7,48 +7,243 @@
         Height="700"
         MinWidth="720"
         MinHeight="420"
-        Background="#FF101010"
+        Background="#FF0D0D0D"
+        FontFamily="Microsoft YaHei"
         WindowStartupLocation="CenterScreen"
         Loaded="Window_Loaded"
         PreviewKeyDown="Window_PreviewKeyDown"
         Closed="Window_Closed">
+    <Window.Resources>
+        <Style x:Key="FlatButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="FontFamily" Value="Microsoft YaHei" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBackground"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBackground" Property="Background" Value="#33FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBackground" Property="Background" Value="#55FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SlimSliderStyle" TargetType="Slider">
+            <Setter Property="Background" Value="#55FFFFFF" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Background="Transparent">
+                            <Border Height="5"
+                                    VerticalAlignment="Center"
+                                    Background="#44FFFFFF"
+                                    CornerRadius="2.5" />
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="Slider.DecreaseLarge"
+                                                  Focusable="False"
+                                                  IsTabStop="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Height="5"
+                                                        Background="White"
+                                                        CornerRadius="2.5" />
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Width="12" Height="12" Focusable="False">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Ellipse Width="12" Height="12" Fill="White" />
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="Slider.IncreaseLarge"
+                                                  Focusable="False"
+                                                  IsTabStop="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Height="5"
+                                                        Background="Transparent"
+                                                        CornerRadius="2.5" />
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <Grid>
         <vlc:VideoView x:Name="PlayerView"
                        HorizontalAlignment="Stretch"
                        VerticalAlignment="Stretch">
-            <Grid>
-                <Border x:Name="InfoBar"
-                        VerticalAlignment="Bottom"
-                        Padding="16,10"
-                        Background="#B3000000">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+            <Grid x:Name="VideoSurface"
+                  Background="Transparent"
+                  MouseLeftButtonDown="VideoSurface_MouseLeftButtonDown">
+                <Button x:Name="TopCategoryButton"
+                        Margin="0,16,16,0"
+                        Padding="14,8"
+                        Panel.ZIndex="4"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Background="#CC000000"
+                        Click="OpenCategoryButton_Click"
+                        Content="分类"
+                        FontSize="13"
+                        Style="{StaticResource FlatButtonStyle}" />
 
-                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <Border x:Name="ControlBar"
+                        Padding="16,8,16,10"
+                        VerticalAlignment="Bottom"
+                        Background="#CC000000"
+                        MouseLeftButtonDown="ControlBar_MouseLeftButtonDown">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
                             <TextBlock x:Name="FileNameText"
+                                       VerticalAlignment="Center"
                                        Foreground="White"
                                        FontSize="15"
                                        FontWeight="SemiBold"
                                        Text="正在准备视频…"
                                        TextTrimming="CharacterEllipsis" />
                             <TextBlock x:Name="ProgressText"
-                                       Margin="0,4,0,0"
+                                       Grid.Column="1"
+                                       Margin="16,0,0,0"
+                                       VerticalAlignment="Center"
                                        Foreground="#FFD0D0D0"
                                        FontSize="12"
                                        Text="00:00" />
-                        </StackPanel>
+                        </Grid>
 
-                        <TextBlock Grid.Column="1"
-                                   Margin="24,0,0,0"
-                                   VerticalAlignment="Center"
-                                   Foreground="#FFC8C8C8"
-                                   FontSize="12"
-                                   TextAlignment="Right"
-                                   TextWrapping="Wrap"
-                                   Text="空格 播放/暂停 · ←/→ 5秒 · Shift 60秒 · ↑/↓ 音量 · N/P 上下条 · F 全屏 · M 静音 · Esc 退出全屏" />
+                        <Grid Grid.Row="1" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" MinWidth="100" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" MinWidth="50" MaxWidth="150" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Button Grid.Column="0"
+                                    Click="PreviousButton_Click"
+                                    Content="⏮ 上一个"
+                                    FontSize="13"
+                                    Style="{StaticResource FlatButtonStyle}" />
+                            <Button Grid.Column="1"
+                                    Margin="4,0"
+                                    Click="PlayPauseButton_Click"
+                                    Content="⏯ 播放/暂停"
+                                    FontSize="13"
+                                    Style="{StaticResource FlatButtonStyle}" />
+                            <Button Grid.Column="2"
+                                    Click="NextButton_Click"
+                                    Content="⏭ 下一个"
+                                    FontSize="13"
+                                    Style="{StaticResource FlatButtonStyle}" />
+
+                            <Slider x:Name="ProgressSlider"
+                                    Grid.Column="3"
+                                    Margin="10,0"
+                                    VerticalAlignment="Center"
+                                    IsMoveToPointEnabled="True"
+                                    IsSnapToTickEnabled="True"
+                                    LargeChange="50"
+                                    Maximum="1000"
+                                    Minimum="0"
+                                    SmallChange="5"
+                                    TickFrequency="1"
+                                    ValueChanged="ProgressSlider_ValueChanged"
+                                    Style="{StaticResource SlimSliderStyle}" />
+                            <TextBlock x:Name="PlaybackTimeText"
+                                       Grid.Column="4"
+                                       MinWidth="78"
+                                       Margin="0,0,12,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="#FFF0F0F0"
+                                       FontSize="12"
+                                       Text="00:00 / 00:00"
+                                       TextAlignment="Center" />
+
+                            <Slider x:Name="VolumeSlider"
+                                    Grid.Column="5"
+                                    Margin="0,0,8,0"
+                                    VerticalAlignment="Center"
+                                    IsMoveToPointEnabled="True"
+                                    IsSnapToTickEnabled="True"
+                                    LargeChange="10"
+                                    Maximum="100"
+                                    Minimum="0"
+                                    SmallChange="5"
+                                    TickFrequency="1"
+                                    ValueChanged="VolumeSlider_ValueChanged"
+                                    Style="{StaticResource SlimSliderStyle}" />
+                            <TextBlock x:Name="VolumePercentText"
+                                       Grid.Column="6"
+                                       MinWidth="34"
+                                       Margin="0,0,10,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="#FFF0F0F0"
+                                       FontSize="12"
+                                       Text="80%" />
+
+                            <Button Grid.Column="7"
+                                    Margin="0,0,4,0"
+                                    Click="ArchiveButton_Click"
+                                    Content="归档…"
+                                    FontSize="13"
+                                    Style="{StaticResource FlatButtonStyle}" />
+                            <Button Grid.Column="8"
+                                    Click="FullscreenButton_Click"
+                                    Content="全屏"
+                                    FontSize="13"
+                                    Style="{StaticResource FlatButtonStyle}" />
+                        </Grid>
                     </Grid>
                 </Border>
             </Grid>
@@ -57,12 +252,13 @@
         <Border x:Name="CategoryOverlay"
                 Background="#99000000"
                 Visibility="Collapsed">
-            <Border Width="460"
-                    MaxHeight="560"
-                    Margin="32"
+            <Border MinWidth="420"
+                    MaxWidth="760"
+                    MaxHeight="640"
+                    Margin="48"
                     Padding="16"
-                    HorizontalAlignment="Left"
-                    VerticalAlignment="Center"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
                     Background="#F21C1C1C"
                     BorderBrush="#66FFFFFF"
                     BorderThickness="1"
@@ -74,14 +270,42 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Foreground="White"
-                               FontSize="16"
-                               FontWeight="SemiBold"
-                               Text="选择分类" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock VerticalAlignment="Center"
+                                   Foreground="White"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Text="选择分类" />
+                        <StackPanel Grid.Column="1"
+                                    HorizontalAlignment="Right"
+                                    Orientation="Horizontal">
+                            <Button Click="NewCategoryButton_Click"
+                                    Content="＋ 新建分类"
+                                    FontSize="12"
+                                    Style="{StaticResource FlatButtonStyle}" />
+                            <Button Click="RenameCategoryButton_Click"
+                                    Content="重命名"
+                                    FontSize="12"
+                                    Style="{StaticResource FlatButtonStyle}" />
+                            <Button Click="HideCategoryButton_Click"
+                                    Content="隐藏"
+                                    FontSize="12"
+                                    Style="{StaticResource FlatButtonStyle}" />
+                            <Button Click="RefreshCategoryButton_Click"
+                                    Content="刷新"
+                                    FontSize="12"
+                                    Style="{StaticResource FlatButtonStyle}" />
+                        </StackPanel>
+                    </Grid>
 
                     <ListBox x:Name="CategoryList"
                              Grid.Row="1"
-                             Margin="0,12,0,12"
+                             Margin="0,12"
                              Padding="4"
                              Background="Transparent"
                              BorderThickness="0"
@@ -93,25 +317,52 @@
                              ScrollViewer.VerticalScrollBarVisibility="Auto">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="BorderThickness" Value="0" />
+                                <Setter Property="Cursor" Value="Hand" />
                                 <Setter Property="Foreground" Value="White" />
-                                <Setter Property="Padding" Value="8,6" />
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Padding" Value="8,6" />
+                                <EventSetter Event="PreviewMouseLeftButtonDown" Handler="CategoryRow_PreviewMouseLeftButtonDown" />
+                                <EventSetter Event="MouseDoubleClick" Handler="CategoryRow_MouseDoubleClick" />
+                                <EventSetter Event="PreviewMouseRightButtonDown" Handler="CategoryRow_PreviewMouseRightButtonDown" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="#55FFFFFF" />
+                                    </Trigger>
+                                </Style.Triggers>
                             </Style>
                         </ListBox.ItemContainerStyle>
                     </ListBox>
 
-                    <TextBlock Grid.Row="2"
-                               Foreground="#FFB8B8B8"
-                               FontSize="12"
-                               TextWrapping="Wrap"
-                               Text="↑/↓ 选择 · Enter 归档/新建/恢复 · F2 改名 · Del 隐藏 · Shift+H 显示隐藏 · F5 刷新 · Esc 关闭" />
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Margin="0,0,16,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="#FFB8B8B8"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Text="单击选择 · 双击归档 · 右键更多 · Enter 归档 · F2 改名 · Del 隐藏 · Shift+H 隐藏项 · Esc/Tab 关闭" />
+                        <Button Grid.Column="1"
+                                Click="CloseCategoryButton_Click"
+                                Content="关闭"
+                                FontSize="13"
+                                Style="{StaticResource FlatButtonStyle}" />
+                    </Grid>
                 </Grid>
             </Border>
         </Border>
 
         <Border x:Name="ToastBorder"
                 MaxWidth="480"
-                Margin="0,0,24,96"
+                Margin="0,0,24,108"
                 Padding="12,8"
                 Panel.ZIndex="10"
                 HorizontalAlignment="Right"
@@ -121,10 +372,22 @@
                 BorderThickness="1"
                 CornerRadius="6"
                 Visibility="Collapsed">
-            <TextBlock x:Name="ToastText"
-                       Foreground="White"
-                       FontSize="13"
-                       TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="ToastText"
+                           MaxWidth="340"
+                           VerticalAlignment="Center"
+                           Foreground="White"
+                           FontSize="13"
+                           TextWrapping="Wrap" />
+                <Button x:Name="ToastUndoButton"
+                        Margin="12,0,0,0"
+                        Padding="8,3"
+                        Click="ToastUndo_Click"
+                        Content="撤销"
+                        FontSize="13"
+                        Style="{StaticResource FlatButtonStyle}"
+                        Visibility="Collapsed" />
+            </StackPanel>
         </Border>
     </Grid>
 </Window>

@@ -1,6 +1,10 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using VidSort.App.Services;
 using VidSort.App.Views;
@@ -33,6 +37,9 @@ public partial class MainWindow : Window
     private bool _isFullscreen;
     private bool _isCategoryOverlayOpen;
     private bool _isBusy;
+    private bool _isProgressDragging;
+    private bool _syncingProgressSlider;
+    private bool _syncingVolumeSlider;
     private WindowState _previousWindowState;
     private WindowStyle _previousWindowStyle;
     private ResizeMode _previousResizeMode;
@@ -41,6 +48,12 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ProgressSlider.AddHandler(
+            Thumb.DragStartedEvent,
+            new DragStartedEventHandler(ProgressSlider_DragStarted));
+        ProgressSlider.AddHandler(
+            Thumb.DragCompletedEvent,
+            new DragCompletedEventHandler(ProgressSlider_DragCompleted));
         _progressTimer.Tick += (_, _) => UpdateProgress();
         _toastTimer.Tick += (_, _) =>
         {
@@ -59,6 +72,7 @@ public partial class MainWindow : Window
             _player = new VlcPlayerService();
             _player.PlaybackEnded += OnPlaybackEnded;
             _player.Volume = 80;
+            SyncVolumeUi(_player.Volume);
             PlayerView.MediaPlayer = _player.MediaPlayer;
         }
         catch (Exception ex)
@@ -132,6 +146,7 @@ public partial class MainWindow : Window
 
         FileNameText.Text = item.FileName;
         ProgressText.Text = "正在打开…";
+        ResetProgressUi();
 
         try
         {
@@ -185,6 +200,184 @@ public partial class MainWindow : Window
 
         _queueIndex--;
         await PlayCurrentAsync();
+    }
+
+    private async void PreviousButton_Click(object sender, RoutedEventArgs e)
+    {
+        await PlayPreviousAsync();
+    }
+
+    private void PlayPauseButton_Click(object sender, RoutedEventArgs e)
+    {
+        _player?.TogglePause();
+    }
+
+    private async void NextButton_Click(object sender, RoutedEventArgs e)
+    {
+        await PlayNextAsync();
+    }
+
+    private void ArchiveButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenCategoryOverlay();
+    }
+
+    private void OpenCategoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenCategoryOverlay();
+    }
+
+    private void FullscreenButton_Click(object sender, RoutedEventArgs e)
+    {
+        EnterFullscreen();
+    }
+
+    private void CloseCategoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        CloseCategoryOverlay();
+    }
+
+    private void NewCategoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        CreateCategory();
+    }
+
+    private void RenameCategoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        RenameSelectedCategory();
+    }
+
+    private void HideCategoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (CategoryList.SelectedItem is OverlayRow row &&
+            row.RelativePath.Length > 0 &&
+            _categoryTree?.IsHidden(row.RelativePath) == true)
+        {
+            UnhideCategory(row.RelativePath);
+            return;
+        }
+
+        HideSelectedCategory();
+    }
+
+    private void RefreshCategoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshLibrary();
+    }
+
+    private void ControlBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+    }
+
+    private void VideoSurface_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (IsWithinControlArea(e.OriginalSource as DependencyObject))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        _player?.TogglePause();
+        e.Handled = true;
+    }
+
+    private bool IsWithinControlArea(DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (ReferenceEquals(source, ControlBar) ||
+                ReferenceEquals(source, TopCategoryButton) ||
+                ReferenceEquals(source, CategoryOverlay) ||
+                ReferenceEquals(source, ToastBorder))
+            {
+                return true;
+            }
+
+            source = GetVisualOrLogicalParent(source);
+        }
+
+        return false;
+    }
+
+    private static DependencyObject? GetVisualOrLogicalParent(DependencyObject node) =>
+        node is Visual ? VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node);
+
+    private void ProgressSlider_DragStarted(object sender, DragStartedEventArgs e)
+    {
+        _isProgressDragging = true;
+    }
+
+    private void ProgressSlider_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        _isProgressDragging = false;
+        SeekToProgressSlider();
+        UpdateProgress();
+    }
+
+    private void ProgressSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_syncingProgressSlider || _player is null)
+        {
+            return;
+        }
+
+        SeekToProgressSlider();
+
+        long duration = _player.DurationMs;
+        if (duration > 0)
+        {
+            long target = (long)Math.Round(duration * e.NewValue / 1000.0);
+            PlaybackTimeText.Text = $"{FormatTime(target)} / {FormatTime(duration)}";
+        }
+    }
+
+    private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_syncingVolumeSlider || _player is null)
+        {
+            return;
+        }
+
+        _player.Volume = (int)Math.Round(e.NewValue);
+        VolumePercentText.Text = $"{_player.Volume}%";
+    }
+
+    private void SeekToProgressSlider()
+    {
+        if (_player is null)
+        {
+            return;
+        }
+
+        long duration = _player.DurationMs;
+        if (duration <= 0)
+        {
+            return;
+        }
+
+        long target = Math.Clamp(
+            (long)Math.Round(duration * ProgressSlider.Value / 1000.0),
+            0,
+            duration);
+        _player.SeekRelative(target - _player.PositionMs);
+    }
+
+    private void ResetProgressUi()
+    {
+        _syncingProgressSlider = true;
+        ProgressSlider.Value = 0;
+        _syncingProgressSlider = false;
+        PlaybackTimeText.Text = "00:00 / 00:00";
+    }
+
+    private void SyncVolumeUi(int volume)
+    {
+        int clamped = Math.Clamp(volume, 0, 100);
+        _syncingVolumeSlider = true;
+        VolumeSlider.Value = clamped;
+        _syncingVolumeSlider = false;
+        VolumePercentText.Text = $"{clamped}%";
     }
 
     private VideoItem? CurrentItem =>
@@ -270,6 +463,12 @@ public partial class MainWindow : Window
         return slash >= 0 ? relativePath[(slash + 1)..] : relativePath;
     }
 
+    private static string GetArchivedCategoryLabel(string relativePath)
+    {
+        string normalized = NormalizeCategoryPath(relativePath);
+        return normalized.Length == 0 ? CategoryOverlayModel.RootLabel : normalized;
+    }
+
     private void CategoryList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (!_isCategoryOverlayOpen || CategoryList.SelectedItem is not OverlayRow row)
@@ -280,6 +479,170 @@ public partial class MainWindow : Window
         if (!row.IsRefresh && !IsNewCategoryRow(row))
         {
             _lastSelectedCategoryRelativePath = NormalizeCategoryPath(row.RelativePath);
+        }
+    }
+
+    private void CategoryRow_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is ListBoxItem { DataContext: OverlayRow row })
+        {
+            CategoryList.SelectedItem = row;
+        }
+    }
+
+    private async void CategoryRow_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBoxItem { DataContext: OverlayRow row })
+        {
+            return;
+        }
+
+        CategoryList.SelectedItem = row;
+        e.Handled = true;
+        await ArchiveSelectedCategoryAsync();
+    }
+
+    private void CategoryRow_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBoxItem { DataContext: OverlayRow row } item)
+        {
+            return;
+        }
+
+        CategoryList.SelectedItem = row;
+        ContextMenu menu = CreateCategoryContextMenu(row);
+        menu.PlacementTarget = item;
+        item.ContextMenu = menu;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private ContextMenu CreateCategoryContextMenu(OverlayRow row)
+    {
+        bool isSpecialRow = row.IsRefresh || IsNewCategoryRow(row);
+        bool isNamedCategory = !isSpecialRow && row.RelativePath.Length > 0;
+        var menu = new ContextMenu();
+
+        var newChild = new MenuItem
+        {
+            Header = "在此新建子分类",
+            Tag = row,
+            IsEnabled = !isSpecialRow
+        };
+        newChild.Click += CategoryContextNewChild_Click;
+
+        var rename = new MenuItem
+        {
+            Header = "重命名",
+            Tag = row,
+            IsEnabled = isNamedCategory
+        };
+        rename.Click += CategoryContextRename_Click;
+
+        var hide = new MenuItem
+        {
+            Header = "从菜单隐藏",
+            Tag = row,
+            IsEnabled = isNamedCategory
+        };
+        hide.Click += CategoryContextHide_Click;
+
+        var open = new MenuItem
+        {
+            Header = "在资源管理器中打开",
+            Tag = row,
+            IsEnabled = !isSpecialRow
+        };
+        open.Click += CategoryContextOpenInExplorer_Click;
+
+        menu.Items.Add(newChild);
+        menu.Items.Add(rename);
+        menu.Items.Add(hide);
+        menu.Items.Add(open);
+        return menu;
+    }
+
+    private void CategoryContextNewChild_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: OverlayRow row } ||
+            row.IsRefresh ||
+            IsNewCategoryRow(row))
+        {
+            return;
+        }
+
+        CategoryList.SelectedItem = row;
+        _lastSelectedCategoryRelativePath = NormalizeCategoryPath(row.RelativePath);
+        CreateCategory();
+    }
+
+    private void CategoryContextRename_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: OverlayRow row } ||
+            row.IsRefresh ||
+            IsNewCategoryRow(row) ||
+            row.RelativePath.Length == 0)
+        {
+            return;
+        }
+
+        CategoryList.SelectedItem = row;
+        RenameSelectedCategory();
+    }
+
+    private void CategoryContextHide_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: OverlayRow row } ||
+            row.IsRefresh ||
+            IsNewCategoryRow(row) ||
+            row.RelativePath.Length == 0)
+        {
+            return;
+        }
+
+        CategoryList.SelectedItem = row;
+        HideSelectedCategory();
+    }
+
+    private void CategoryContextOpenInExplorer_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: OverlayRow row } ||
+            row.IsRefresh ||
+            IsNewCategoryRow(row))
+        {
+            return;
+        }
+
+        OpenCategoryInExplorer(row);
+    }
+
+    private void OpenCategoryInExplorer(OverlayRow row)
+    {
+        if (_categoryTree is null)
+        {
+            ShowToast("视频库尚未加载");
+            return;
+        }
+
+        try
+        {
+            string target = _categoryTree.ResolveTarget(row.RelativePath);
+            if (!Directory.Exists(target))
+            {
+                ShowToast("分类目录不存在");
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{target}\"",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"打开资源管理器失败：{ex.Message}");
         }
     }
 
@@ -611,6 +974,9 @@ public partial class MainWindow : Window
                 SaveJournal();
             }
 
+            bool canUndo = !outcome.NoOp && outcome.DestPath is not null;
+            string archiveMessage = $"已移动到 {GetArchivedCategoryLabel(categoryRelativePath)}";
+
             _queue.RemoveAt(_queueIndex);
 
             if (_queue.Count == 0)
@@ -625,7 +991,7 @@ public partial class MainWindow : Window
                 }
 
                 RefreshOverlayRows();
-                ShowToast("已全部归档");
+                ShowToast(archiveMessage, canUndo);
                 return;
             }
 
@@ -641,12 +1007,13 @@ public partial class MainWindow : Window
                 }
 
                 RefreshOverlayRows();
-                ShowToast("已归档");
+                ShowToast(archiveMessage, canUndo);
                 return;
             }
 
             await PlayCurrentAsync();
             RefreshOverlayRows(categoryRelativePath);
+            ShowToast(archiveMessage, canUndo);
         }
         catch (Exception ex)
         {
@@ -950,6 +1317,7 @@ public partial class MainWindow : Window
             }
         }
 
+        bool focusInSlider = IsKeyboardFocusWithinSlider();
         switch (e.Key)
         {
             case Key.Space:
@@ -957,25 +1325,47 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 break;
             case Key.Left:
+                if (focusInSlider)
+                {
+                    break;
+                }
+
                 _player?.SeekRelative(shift ? -60_000 : -5_000);
                 e.Handled = true;
                 break;
             case Key.Right:
+                if (focusInSlider)
+                {
+                    break;
+                }
+
                 _player?.SeekRelative(shift ? 60_000 : 5_000);
                 e.Handled = true;
                 break;
             case Key.Up:
+                if (focusInSlider)
+                {
+                    break;
+                }
+
                 if (_player is not null)
                 {
                     _player.Volume += 5;
+                    SyncVolumeUi(_player.Volume);
                     ShowToast($"音量 {_player.Volume}%");
                 }
                 e.Handled = true;
                 break;
             case Key.Down:
+                if (focusInSlider)
+                {
+                    break;
+                }
+
                 if (_player is not null)
                 {
                     _player.Volume -= 5;
+                    SyncVolumeUi(_player.Volume);
                     ShowToast($"音量 {_player.Volume}%");
                 }
                 e.Handled = true;
@@ -1014,6 +1404,22 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 break;
         }
+    }
+
+    private static bool IsKeyboardFocusWithinSlider()
+    {
+        DependencyObject? current = Keyboard.FocusedElement as DependencyObject;
+        while (current is not null)
+        {
+            if (current is Slider)
+            {
+                return true;
+            }
+
+            current = GetVisualOrLogicalParent(current);
+        }
+
+        return false;
     }
 
     private void EnterFullscreen()
@@ -1061,11 +1467,20 @@ public partial class MainWindow : Window
 
         long position = _player.PositionMs;
         long duration = _player.DurationMs;
-        string progress = duration > 0
-            ? $"{FormatTime(position)} / {FormatTime(duration)}"
-            : FormatTime(position);
+        long displayedPosition = _isProgressDragging && duration > 0
+            ? (long)Math.Round(duration * ProgressSlider.Value / 1000.0)
+            : position;
 
-        ProgressText.Text = $"{progress} · 音量 {_player.Volume}%";
+        PlaybackTimeText.Text = $"{FormatTime(displayedPosition)} / {FormatTime(duration)}";
+        ProgressText.Text = _player.IsPlaying ? "播放中" : "已暂停";
+        VolumePercentText.Text = $"{_player.Volume}%";
+
+        if (!_isProgressDragging && duration > 0)
+        {
+            _syncingProgressSlider = true;
+            ProgressSlider.Value = Math.Clamp(position * 1000.0 / duration, 0, 1000);
+            _syncingProgressSlider = false;
+        }
     }
 
     private static string FormatTime(long milliseconds)
@@ -1076,12 +1491,18 @@ public partial class MainWindow : Window
             : time.ToString(@"mm\:ss");
     }
 
-    private void ShowToast(string message)
+    private void ShowToast(string message, bool showUndo = false)
     {
         ToastText.Text = message;
+        ToastUndoButton.Visibility = showUndo ? Visibility.Visible : Visibility.Collapsed;
         ToastBorder.Visibility = Visibility.Visible;
         _toastTimer.Stop();
         _toastTimer.Start();
+    }
+
+    private async void ToastUndo_Click(object sender, RoutedEventArgs e)
+    {
+        await UndoLastArchiveAsync();
     }
 
     private void Window_Closed(object? sender, EventArgs e)
