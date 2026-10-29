@@ -246,12 +246,42 @@
                         </Grid>
                     </Grid>
                 </Border>
-            </Grid>
-        </vlc:VideoView>
+                <Border x:Name="ToastBorder"
+                        MaxWidth="480"
+                        Margin="0,0,24,108"
+                        Padding="12,8"
+                        Panel.ZIndex="10"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Background="#E6222222"
+                        BorderBrush="#66FFFFFF"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="ToastText"
+                                   MaxWidth="340"
+                                   VerticalAlignment="Center"
+                                   Foreground="White"
+                                   FontSize="13"
+                                   TextWrapping="Wrap" />
+                        <Button x:Name="ToastUndoButton"
+                                Margin="12,0,0,0"
+                                Padding="8,3"
+                                Click="ToastUndo_Click"
+                                Content="撤销"
+                                FontSize="13"
+                                Style="{StaticResource FlatButtonStyle}"
+                                Visibility="Collapsed" />
+                    </StackPanel>
+                </Border>
 
-        <Border x:Name="CategoryOverlay"
-                Background="#99000000"
-                Visibility="Collapsed">
+                <!-- 必须放在 VideoView 内容区内：libVLC 用原生窗口渲染，WPF 兄弟元素无法盖在它上面（airspace） -->
+                <Border x:Name="CategoryOverlay"
+                        Background="#99000000"
+                        MouseLeftButtonDown="CategoryOverlay_MouseLeftButtonDown"
+                        Panel.ZIndex="100"
+                        Visibility="Collapsed">
             <Border MinWidth="420"
                     MaxWidth="760"
                     MaxHeight="640"
@@ -360,34 +390,7 @@
             </Border>
         </Border>
 
-        <Border x:Name="ToastBorder"
-                MaxWidth="480"
-                Margin="0,0,24,108"
-                Padding="12,8"
-                Panel.ZIndex="10"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Bottom"
-                Background="#E6222222"
-                BorderBrush="#66FFFFFF"
-                BorderThickness="1"
-                CornerRadius="6"
-                Visibility="Collapsed">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock x:Name="ToastText"
-                           MaxWidth="340"
-                           VerticalAlignment="Center"
-                           Foreground="White"
-                           FontSize="13"
-                           TextWrapping="Wrap" />
-                <Button x:Name="ToastUndoButton"
-                        Margin="12,0,0,0"
-                        Padding="8,3"
-                        Click="ToastUndo_Click"
-                        Content="撤销"
-                        FontSize="13"
-                        Style="{StaticResource FlatButtonStyle}"
-                        Visibility="Collapsed" />
-            </StackPanel>
-        </Border>
+            </Grid>
+        </vlc:VideoView>
     </Grid>
 </Window>

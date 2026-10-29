@@ -270,6 +270,11 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    private void CategoryOverlay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+    }
+
     private void VideoSurface_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (IsWithinControlArea(e.OriginalSource as DependencyObject))
