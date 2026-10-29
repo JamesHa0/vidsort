@@ -96,7 +96,11 @@ internal static class Program
             ("索引增量：变更项清空元数据", IndexTests.IncrementalChangeClearsMetadataAsync),
             ("索引持久化：Save/Load 往返", IndexTests.SaveLoadRoundTripAsync),
             ("索引归档：ApplyMove 同步路径", IndexTests.ApplyMoveUpdatesPathAsync),
-            ("播放队列：排序、分类与可复现洗牌", IndexTests.PlayQueueOrderingAndShuffleAsync)
+            ("播放队列：排序、分类与可复现洗牌", IndexTests.PlayQueueOrderingAndShuffleAsync),
+            ("协调器：成功归档并续播新路径", CoordinatorTests.SuccessfulArchiveAsync),
+            ("协调器：归档失败仍续播原路径", CoordinatorTests.FailedArchiveKeepsSourceAndIndexAsync),
+            ("协调器：已在目标目录时续播原路径", CoordinatorTests.NoOpArchiveKeepsIndexAsync),
+            ("协调器：成功与失败均保留播放进度", CoordinatorTests.PlaybackResumesFromSavedPositionAsync)
         };
 
         int passed = 0;
