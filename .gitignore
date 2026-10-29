@@ -2,4 +2,5 @@ bin/
 obj/
 out/
 dist/
+release/
 *.user
