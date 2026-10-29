@@ -14,6 +14,7 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
     private string? _currentPath;
     private bool _releasing;
     private bool _disposed;
+    private volatile bool _ending;
 
     public event EventHandler? PlaybackEnded;
 
@@ -131,11 +132,16 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         }
     }
 
-    public Task PlayAsync(string absolutePath, long startMs)
+    public async Task PlayAsync(string absolutePath, long startMs)
     {
         if (string.IsNullOrWhiteSpace(absolutePath))
         {
             throw new ArgumentException("视频路径不能为空", nameof(absolutePath));
+        }
+
+        if (_ending)
+        {
+            await Task.Delay(120).ConfigureAwait(false);
         }
 
         ReleaseCore();
@@ -164,7 +170,7 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
                 throw new InvalidOperationException($"无法播放视频：{absolutePath}");
             }
 
-            return Task.CompletedTask;
+            _ending = false;
         }
         catch
         {
@@ -246,6 +252,30 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         lock (_gate)
         {
             notify = !_releasing && !_disposed;
+            if (notify)
+            {
+                _ending = true;
+            }
+        }
+
+        if (!notify)
+        {
+            return;
+        }
+
+        Task.Run(async () =>
+        {
+            await Task.Delay(150).ConfigureAwait(false);
+            EndReachedSafe();
+        });
+    }
+
+    private void EndReachedSafe()
+    {
+        bool notify;
+        lock (_gate)
+        {
+            notify = !_releasing && !_disposed && _ending;
         }
 
         if (notify)
@@ -294,6 +324,7 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         lock (_gate)
         {
             _releasing = false;
+            _ending = false;
         }
 
         if (failure is not null)

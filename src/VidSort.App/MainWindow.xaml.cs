@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private string _lastSelectedCategoryRelativePath = string.Empty;
     private int _queueIndex = -1;
     private bool _isClosing;
+    private bool _isAdvancing;
     private bool _isFullscreen;
     private bool _isCategoryOverlayOpen;
     private bool _isBusy;
@@ -119,11 +120,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task PlayCurrentAsync()
+    private async Task<bool> PlayCurrentAsync()
     {
         if (_player is null || _rootDir is null || _queueIndex < 0 || _queueIndex >= _queue.Count)
         {
-            return;
+            return false;
         }
 
         VideoItem item = _queue[_queueIndex];
@@ -137,12 +138,14 @@ public partial class MainWindow : Window
             await _player.PlayAsync(path, 0);
             _progressTimer.Start();
             UpdateProgress();
+            return true;
         }
         catch (Exception ex)
         {
             _progressTimer.Stop();
             ProgressText.Text = "播放失败";
             ShowToast($"播放失败：{ex.Message}");
+            return false;
         }
     }
 
@@ -831,13 +834,65 @@ public partial class MainWindow : Window
             return;
         }
 
-        _ = Dispatcher.InvokeAsync(() =>
+        Dispatcher.BeginInvoke(new Action(() => _ = AdvanceFromEndAsync()));
+    }
+
+    private async Task AdvanceFromEndAsync()
+    {
+        if (_isAdvancing)
         {
-            if (!_isClosing)
+            return;
+        }
+
+        _isAdvancing = true;
+        try
+        {
+            if (_isClosing)
             {
-                _ = PlayNextAsync(true);
+                return;
             }
-        });
+
+            if (_queue.Count == 0)
+            {
+                ShowToast("库里没有找到视频");
+                return;
+            }
+
+            if (_queueIndex + 1 >= _queue.Count)
+            {
+                _progressTimer.Stop();
+                ProgressText.Text = "已播放完";
+                ShowToast("视频播放完毕");
+                return;
+            }
+
+            _queueIndex++;
+            bool started = await PlayCurrentAsync();
+            if (!started || _isClosing)
+            {
+                if (!_isClosing)
+                {
+                    ShowToast("自动续播失败，按 N 手动切换");
+                }
+
+                return;
+            }
+
+            await Task.Delay(3000);
+            if (!_isClosing && _player is not null &&
+                !_player.IsPlaying && !string.IsNullOrWhiteSpace(_player.CurrentPath))
+            {
+                ShowToast("自动续播失败，按 N 手动切换");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"自动续播失败：{ex.Message}");
+        }
+        finally
+        {
+            _isAdvancing = false;
+        }
     }
 
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
