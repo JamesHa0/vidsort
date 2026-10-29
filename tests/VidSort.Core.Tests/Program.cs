@@ -100,7 +100,10 @@ internal static class Program
             ("协调器：成功归档并续播新路径", CoordinatorTests.SuccessfulArchiveAsync),
             ("协调器：归档失败仍续播原路径", CoordinatorTests.FailedArchiveKeepsSourceAndIndexAsync),
             ("协调器：已在目标目录时续播原路径", CoordinatorTests.NoOpArchiveKeepsIndexAsync),
-            ("协调器：成功与失败均保留播放进度", CoordinatorTests.PlaybackResumesFromSavedPositionAsync)
+            ("协调器：成功与失败均保留播放进度", CoordinatorTests.PlaybackResumesFromSavedPositionAsync),
+            ("归档日志：单次撤销回到 inbox", JournalTests.UndoLastRestoresSingleAsync),
+            ("归档日志：后进先出撤销顺序", JournalTests.UndoLastIsLifoAsync),
+            ("归档日志：持久化与失败回滚", JournalTests.PersistenceAndFailureRollbackAsync)
         };
 
         int passed = 0;

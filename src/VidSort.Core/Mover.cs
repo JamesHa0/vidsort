@@ -101,6 +101,7 @@ public class Mover
             if (SameVolumeTest(sourcePath, targetDirectory))
             {
                 options.Cancel.ThrowIfCancellationRequested();
+                bool destinationExisted = File.Exists(destinationPath);
 
                 try
                 {
@@ -112,6 +113,11 @@ public class Mover
                 }
                 catch (IOException ex) when (IsCrossDevice(ex))
                 {
+                }
+                catch (IOException) when (!destinationExisted && File.Exists(sourcePath))
+                {
+                    TryDelete(destinationPath);
+                    throw;
                 }
             }
 
