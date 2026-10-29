@@ -95,7 +95,7 @@ public class Mover
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                return MoveOutcome.Failure(MoveError.AccessDenied, ex.Message);
+                return MoveOutcome.Failure(MoveError.AccessDenied);
             }
 
             if (SameVolumeTest(sourcePath, targetDirectory))
@@ -120,7 +120,7 @@ public class Mover
         }
         catch (Exception ex)
         {
-            return MoveOutcome.Failure(MapError(ex), ex.Message);
+            return MoveOutcome.Failure(MapError(ex));
         }
     }
 
