@@ -144,9 +144,8 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
             await Task.Delay(120).ConfigureAwait(false);
         }
 
-        await ReleaseAsync().ConfigureAwait(false);
-
         Media? media = null;
+        Media? previousMedia = null;
         bool attached = false;
         try
         {
@@ -160,12 +159,14 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
                     throw new ObjectDisposedException(nameof(VlcPlayerService));
                 }
 
+                previousMedia = _media;
                 _media = media;
                 _pendingSeekMs = startMs > 0 ? startMs : -1;
                 _currentPath = absolutePath;
                 attached = true;
             }
 
+            Log("PlaySwitchNoStop");
             bool started = await Task.Run(() => _mediaPlayer.Play(media)).ConfigureAwait(false);
             if (!started)
             {
@@ -174,6 +175,18 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
 
             Log("PlayEnd");
             _ending = false;
+
+            if (previousMedia is not null)
+            {
+                try
+                {
+                    previousMedia.Dispose();
+                }
+                catch
+                {
+                    // 播放已切到新 media，旧 media 释放失败不影响当前播放。
+                }
+            }
         }
         catch
         {
