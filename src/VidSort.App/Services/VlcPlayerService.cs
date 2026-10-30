@@ -134,11 +134,6 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
 
     public async Task PlayAsync(string absolutePath, long startMs)
     {
-        await Task.Run(async () =>
-        {
-        Log("PlayStart");
-        try
-        {
         if (string.IsNullOrWhiteSpace(absolutePath))
         {
             throw new ArgumentException("视频路径不能为空", nameof(absolutePath));
@@ -198,21 +193,10 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
 
             throw;
         }
-        }
-        finally
-        {
-            Log("PlayDone");
-        }
-        }).ConfigureAwait(false);
     }
 
     public async Task ReleaseAsync()
     {
-        await Task.Run(async () =>
-        {
-        Log("ReleaseStart");
-        try
-        {
         Media? media;
         lock (_gate)
         {
@@ -253,12 +237,6 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         {
             throw new InvalidOperationException("释放视频资源失败。", failure);
         }
-        }
-        finally
-        {
-            Log("ReleaseDone");
-        }
-        }).ConfigureAwait(false);
     }
 
     public void Pause()
@@ -365,16 +343,6 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
 
     private Exception? ReleasePlayer(Media? media)
     {
-        lock (_gate)
-        {
-            if (ReferenceEquals(_media, media))
-            {
-                _media = null;
-                _pendingSeekMs = -1;
-                _currentPath = null;
-            }
-        }
-
         Exception? failure = null;
         try
         {
@@ -413,22 +381,6 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         }
 
         return failure;
-    }
-
-    private static void Log(string step)
-    {
-        try
-        {
-            string directory = Path.GetDirectoryName(AppConfig.ConfigPath) ?? AppContext.BaseDirectory;
-            Directory.CreateDirectory(directory);
-            File.AppendAllText(
-                Path.Combine(directory, "logs.txt"),
-                $"{DateTime.Now:HH:mm:ss.fff} {step}{Environment.NewLine}");
-        }
-        catch
-        {
-            // 诊断日志失败不应影响播放或释放流程。
-        }
     }
 
     private static void WriteReleaseTimeoutLog()
