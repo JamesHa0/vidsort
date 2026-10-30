@@ -151,6 +151,7 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         try
         {
             media = new Media(_libVlc, absolutePath, FromType.FromPath, Array.Empty<string>());
+            Log("PlayBegin");
 
             lock (_gate)
             {
@@ -171,10 +172,12 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
                 throw new InvalidOperationException($"无法播放视频：{absolutePath}");
             }
 
+            Log("PlayEnd");
             _ending = false;
         }
         catch
         {
+            Log("PlayFailed");
             if (attached)
             {
                 try
@@ -197,6 +200,7 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
 
     public async Task ReleaseAsync()
     {
+        Log("ReleaseBegin");
         Media? media;
         lock (_gate)
         {
@@ -237,6 +241,8 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         {
             throw new InvalidOperationException("释放视频资源失败。", failure);
         }
+
+        Log("ReleaseEnd");
     }
 
     public void Pause()
@@ -346,7 +352,9 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         Exception? failure = null;
         try
         {
+            Log("StopBegin");
             _mediaPlayer.Stop();
+            Log("StopEnd");
         }
         catch (Exception ex)
         {
@@ -395,6 +403,21 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         catch
         {
             // 诊断日志失败不应影响释放流程。
+        }
+    }
+
+    private static void Log(string step)
+    {
+        try
+        {
+            string directory = Path.GetDirectoryName(AppConfig.ConfigPath) ?? AppContext.BaseDirectory;
+            Directory.CreateDirectory(directory);
+            string line = $"{DateTime.Now:HH:mm:ss.fff} {step}{Environment.NewLine}";
+            File.AppendAllText(Path.Combine(directory, "logs.txt"), line);
+        }
+        catch
+        {
+            // 诊断日志失败不应影响流程。
         }
     }
 
