@@ -106,12 +106,140 @@
     </Window.Resources>
 
     <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border x:Name="Sidebar"
+                Width="280"
+                Background="#FF141414"
+                BorderBrush="#33FFFFFF"
+                BorderThickness="0,0,1,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid Margin="14,10,8,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock VerticalAlignment="Center"
+                               Foreground="White"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Text="视频库" />
+                    <Button Grid.Column="1"
+                            Padding="7,3"
+                            Click="SidebarCloseButton_Click"
+                            Content="✕"
+                            FontSize="13"
+                            Style="{StaticResource FlatButtonStyle}" />
+                </Grid>
+
+                <ComboBox x:Name="FolderSelector"
+                          Grid.Row="1"
+                          Margin="12,0,12,8"
+                          Padding="6,4"
+                          Background="#FF1E1E1E"
+                          Foreground="White"
+                          SelectionChanged="FolderSelector_SelectionChanged">
+                    <ComboBox.ItemContainerStyle>
+                        <Style TargetType="ComboBoxItem">
+                            <Setter Property="Background" Value="#FF1E1E1E" />
+                            <Setter Property="Foreground" Value="White" />
+                            <Setter Property="Padding" Value="6,4" />
+                            <Style.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter Property="Background" Value="#33FFFFFF" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ComboBox.ItemContainerStyle>
+                </ComboBox>
+
+                <ListBox x:Name="VideoFileList"
+                         Grid.Row="2"
+                         Margin="0,0,0,4"
+                         Background="#FF141414"
+                         BorderThickness="0"
+                         FontFamily="Microsoft YaHei"
+                         FontSize="13"
+                         Foreground="White"
+                         SelectionChanged="VideoFileList_SelectionChanged"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Height" Value="28" />
+                            <Setter Property="Padding" Value="10,0" />
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="Foreground" Value="White" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="VerticalContentAlignment" Value="Center" />
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#33FFFFFF" />
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="#33FFFFFF" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="13"
+                                       Text="{Binding DisplayText}"
+                                       TextTrimming="CharacterEllipsis">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                                <Setter Property="FontWeight" Value="Bold" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <TextBlock x:Name="SidebarCountText"
+                           Grid.Row="3"
+                           Margin="12,4,12,10"
+                           Foreground="#FFB8B8B8"
+                           FontSize="11"
+                           Text="共 0 个视频" />
+            </Grid>
+        </Border>
+
         <vlc:VideoView x:Name="PlayerView"
+                       Grid.Column="1"
                        HorizontalAlignment="Stretch"
                        VerticalAlignment="Stretch">
             <Grid x:Name="VideoSurface"
                   Background="Transparent"
                   MouseLeftButtonDown="VideoSurface_MouseLeftButtonDown">
+                <Button x:Name="SidebarToggleButton"
+                        Margin="16,16,0,0"
+                        Padding="14,8"
+                        Panel.ZIndex="4"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Background="#CC000000"
+                        Click="SidebarToggleButton_Click"
+                        Content="☰"
+                        FontSize="13"
+                        Style="{StaticResource FlatButtonStyle}" />
                 <StackPanel Margin="0,16,16,0"
                             Panel.ZIndex="4"
                             HorizontalAlignment="Right"

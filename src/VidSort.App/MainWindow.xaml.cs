@@ -32,7 +32,11 @@ public partial class MainWindow : Window
     private string? _journalPath;
     private string? _rootDir;
     private string _lastSelectedCategoryRelativePath = string.Empty;
+    private string _sidebarFilter = string.Empty;
+    private List<SidebarVideoRow> _sidebarRows = new();
     private int _queueIndex = -1;
+    private bool _sidebarVisible = true;
+    private bool _syncingSidebar;
     private bool _isClosing;
     private bool _isAdvancing;
     private bool _isFullscreen;
@@ -127,6 +131,7 @@ public partial class MainWindow : Window
             _archiveCoordinator = new ArchiveCoordinator(_player, _mover, _index);
             _queue = PlayQueue.Build(scan.Items, null, false);
             RefreshOverlayRows();
+            await RefreshSidebarAsync();
 
             if (_queue.Count == 0)
             {
@@ -214,6 +219,7 @@ public partial class MainWindow : Window
             await _player.PlayAsync(path, 0);
             _progressTimer.Start();
             UpdateProgress();
+            UpdateSidebarPlayingMarker();
             return true;
         }
         catch (Exception ex)
@@ -345,6 +351,18 @@ public partial class MainWindow : Window
         EnterFullscreen();
     }
 
+    private void SidebarCloseButton_Click(object sender, RoutedEventArgs e) => SetSidebarVisible(false);
+
+    private void SidebarToggleButton_Click(object sender, RoutedEventArgs e) => ToggleSidebar();
+
+    private void ToggleSidebar() => SetSidebarVisible(!_sidebarVisible);
+
+    private void SetSidebarVisible(bool visible)
+    {
+        _sidebarVisible = visible;
+        Sidebar.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void CloseCategoryButton_Click(object sender, RoutedEventArgs e)
     {
         CloseCategoryOverlay();
@@ -406,6 +424,7 @@ public partial class MainWindow : Window
         {
             if (ReferenceEquals(source, ControlBar) ||
                 ReferenceEquals(source, TopCategoryButton) ||
+                ReferenceEquals(source, SidebarToggleButton) ||
                 ReferenceEquals(source, ChangeRootButton) ||
                 ReferenceEquals(source, RootPickerPanel) ||
                 ReferenceEquals(source, CategoryOverlay) ||
@@ -512,6 +531,110 @@ public partial class MainWindow : Window
 
         _categoryTree = new CategoryTree(_rootDir, _config?.HiddenCategories);
         _categoryNodes = _categoryTree.Scan();
+    }
+
+    private Task RefreshSidebarAsync()
+    {
+        RefreshFolderSelector();
+
+        _sidebarRows = _index is null
+            ? new List<SidebarVideoRow>()
+            : PlayQueue.Build(
+                    _index.Items,
+                    _sidebarFilter.Length == 0 ? null : _sidebarFilter,
+                    false)
+                .Select(item => new SidebarVideoRow
+                {
+                    RelativePath = item.RelativePath,
+                    FileName = item.FileName,
+                    IsPlaying = string.Equals(
+                        item.RelativePath,
+                        CurrentItem?.RelativePath,
+                        StringComparison.Ordinal)
+                })
+                .ToList();
+
+        _syncingSidebar = true;
+        VideoFileList.ItemsSource = _sidebarRows;
+        VideoFileList.SelectedItem = _sidebarRows.FirstOrDefault(row => row.IsPlaying);
+        _syncingSidebar = false;
+        SidebarCountText.Text = $"共 {_sidebarRows.Count} 个视频";
+        return Task.CompletedTask;
+    }
+
+    private void RefreshFolderSelector()
+    {
+        var folders = new List<SidebarFolderItem>
+        {
+            new() { DisplayText = "全部视频", RelativePath = string.Empty }
+        };
+        AddSidebarFolders(_categoryNodes, 0, folders);
+
+        _syncingSidebar = true;
+        FolderSelector.ItemsSource = folders;
+        SidebarFolderItem? selected = folders.FirstOrDefault(folder =>
+            string.Equals(folder.RelativePath, _sidebarFilter, StringComparison.Ordinal));
+        FolderSelector.SelectedItem = selected ?? folders[0];
+        _sidebarFilter = selected?.RelativePath ?? string.Empty;
+        _syncingSidebar = false;
+    }
+
+    private static void AddSidebarFolders(
+        IEnumerable<CategoryNode> nodes,
+        int depth,
+        List<SidebarFolderItem> target)
+    {
+        foreach (CategoryNode node in nodes)
+        {
+            target.Add(new SidebarFolderItem
+            {
+                DisplayText = new string(' ', depth * 2) +
+                    string.Join(" / ", node.RelativePath.Split('/')),
+                RelativePath = node.RelativePath
+            });
+            AddSidebarFolders(node.Children, depth + 1, target);
+        }
+    }
+
+    private async void FolderSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingSidebar || FolderSelector.SelectedItem is not SidebarFolderItem folder)
+        {
+            return;
+        }
+
+        _sidebarFilter = NormalizeCategoryPath(folder.RelativePath);
+        await RefreshSidebarAsync();
+    }
+
+    private async void VideoFileList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingSidebar ||
+            _index is null ||
+            VideoFileList.SelectedItem is not SidebarVideoRow row)
+        {
+            return;
+        }
+
+        _queue = PlayQueue.Build(
+            _index.Items,
+            _sidebarFilter.Length == 0 ? null : _sidebarFilter,
+            false);
+        _queueIndex = _queue.FindIndex(item =>
+            string.Equals(item.RelativePath, row.RelativePath, StringComparison.Ordinal));
+        if (_queueIndex >= 0)
+        {
+            await PlayCurrentAsync();
+        }
+    }
+
+    private void UpdateSidebarPlayingMarker()
+    {
+        string? playingPath = CurrentItem?.RelativePath;
+        foreach (SidebarVideoRow row in _sidebarRows)
+        {
+            row.IsPlaying = string.Equals(row.RelativePath, playingPath, StringComparison.Ordinal);
+        }
     }
 
     private void RefreshOverlayRows(string? preferredRelativePath = null)
@@ -1118,6 +1241,7 @@ public partial class MainWindow : Window
                 }
 
                 RefreshOverlayRows();
+                await RefreshSidebarAsync();
                 ShowToast(archiveMessage, canUndo);
                 return true;
             }
@@ -1134,12 +1258,14 @@ public partial class MainWindow : Window
                 }
 
                 RefreshOverlayRows();
+                await RefreshSidebarAsync();
                 ShowToast(archiveMessage, canUndo);
                 return true;
             }
 
             await PlayCurrentAsync();
             RefreshOverlayRows(categoryRelativePath);
+            await RefreshSidebarAsync();
             ShowToast(archiveMessage, canUndo);
             return true;
         }
@@ -1539,6 +1665,10 @@ public partial class MainWindow : Window
                     _player.Mute = !_player.Mute;
                     ShowToast(_player.Mute ? "已静音" : "已取消静音");
                 }
+                e.Handled = true;
+                break;
+            case Key.B:
+                ToggleSidebar();
                 e.Handled = true;
                 break;
             case Key.Escape:
