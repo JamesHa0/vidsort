@@ -229,8 +229,8 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
             _media = null;
         }
 
-        Task<Exception?> releaseTask = Task.Run(() => ReleasePlayer(media));
-        Task completed = await Task.WhenAny(releaseTask, Task.Delay(3000)).ConfigureAwait(false);
+        Task<Exception?> releaseTask = ReleasePlayer(media);
+        Task completed = await Task.WhenAny(releaseTask, Task.Delay(9000)).ConfigureAwait(false);
         if (completed != releaseTask)
         {
             lock (_gate)
@@ -360,19 +360,15 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         }
     }
 
-    private Exception? ReleasePlayer(Media? media)
+    private async Task<Exception?> ReleasePlayer(Media? media)
     {
         Exception? failure = null;
-        try
-        {
-            Log("StopBegin");
-            _mediaPlayer.Stop();
-            Log("StopEnd");
-        }
-        catch (Exception ex)
-        {
-            failure = ex;
-        }
+        Log("StopBegin");
+        Log("StopOffThreadStart");
+        Task stopTask = Task.Run(() => { try { _mediaPlayer.Stop(); } catch (Exception ex) { failure ??= ex; } });
+        Task finished = await Task.WhenAny(stopTask, Task.Delay(8000)).ConfigureAwait(false);
+        if (finished != stopTask) { Log("StopTimeout"); WriteReleaseTimeoutLog(); }
+        else { Log("StopOffThreadEnd"); Log("StopEnd"); }
 
         bool clearMedia;
         lock (_gate)
