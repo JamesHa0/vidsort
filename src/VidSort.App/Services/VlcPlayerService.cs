@@ -144,13 +144,13 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
             await Task.Delay(120).ConfigureAwait(false);
         }
 
+        await ReleaseAsync().ConfigureAwait(false);
+
         Media? media = null;
-        Media? previousMedia = null;
         bool attached = false;
         try
         {
             media = new Media(_libVlc, absolutePath, FromType.FromPath, Array.Empty<string>());
-            Log("PlayBegin");
 
             lock (_gate)
             {
@@ -159,38 +159,22 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
                     throw new ObjectDisposedException(nameof(VlcPlayerService));
                 }
 
-                previousMedia = _media;
                 _media = media;
                 _pendingSeekMs = startMs > 0 ? startMs : -1;
                 _currentPath = absolutePath;
                 attached = true;
             }
 
-            Log("PlaySwitchNoStop");
             bool started = await Task.Run(() => _mediaPlayer.Play(media)).ConfigureAwait(false);
             if (!started)
             {
                 throw new InvalidOperationException($"无法播放视频：{absolutePath}");
             }
 
-            Log("PlayEnd");
             _ending = false;
-
-            if (previousMedia is not null)
-            {
-                try
-                {
-                    previousMedia.Dispose();
-                }
-                catch
-                {
-                    // 播放已切到新 media，旧 media 释放失败不影响当前播放。
-                }
-            }
         }
         catch
         {
-            Log("PlayFailed");
             if (attached)
             {
                 try
@@ -213,7 +197,6 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
 
     public async Task ReleaseAsync()
     {
-        Log("ReleaseBegin");
         Media? media;
         lock (_gate)
         {
@@ -229,8 +212,8 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
             _media = null;
         }
 
-        Task<Exception?> releaseTask = ReleasePlayer(media);
-        Task completed = await Task.WhenAny(releaseTask, Task.Delay(9000)).ConfigureAwait(false);
+        Task<Exception?> releaseTask = Task.Run(() => ReleasePlayer(media));
+        Task completed = await Task.WhenAny(releaseTask, Task.Delay(3000)).ConfigureAwait(false);
         if (completed != releaseTask)
         {
             lock (_gate)
@@ -254,8 +237,6 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         {
             throw new InvalidOperationException("释放视频资源失败。", failure);
         }
-
-        Log("ReleaseEnd");
     }
 
     public void Pause()
@@ -360,15 +341,17 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         }
     }
 
-    private async Task<Exception?> ReleasePlayer(Media? media)
+    private Exception? ReleasePlayer(Media? media)
     {
         Exception? failure = null;
-        Log("StopBegin");
-        Log("StopOffThreadStart");
-        Task stopTask = Task.Run(() => { try { _mediaPlayer.Stop(); } catch (Exception ex) { failure ??= ex; } });
-        Task finished = await Task.WhenAny(stopTask, Task.Delay(8000)).ConfigureAwait(false);
-        if (finished != stopTask) { Log("StopTimeout"); WriteReleaseTimeoutLog(); }
-        else { Log("StopOffThreadEnd"); Log("StopEnd"); }
+        try
+        {
+            _mediaPlayer.Stop();
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
 
         bool clearMedia;
         lock (_gate)
@@ -412,21 +395,6 @@ public sealed class VlcPlayerService : IPlayer, IDisposable
         catch
         {
             // 诊断日志失败不应影响释放流程。
-        }
-    }
-
-    private static void Log(string step)
-    {
-        try
-        {
-            string directory = Path.GetDirectoryName(AppConfig.ConfigPath) ?? AppContext.BaseDirectory;
-            Directory.CreateDirectory(directory);
-            string line = $"{DateTime.Now:HH:mm:ss.fff} {step}{Environment.NewLine}";
-            File.AppendAllText(Path.Combine(directory, "logs.txt"), line);
-        }
-        catch
-        {
-            // 诊断日志失败不应影响流程。
         }
     }
 

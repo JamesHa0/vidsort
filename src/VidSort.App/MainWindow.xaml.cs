@@ -1086,9 +1086,7 @@ public partial class MainWindow : Window
         try
         {
             _player?.Pause();
-            Log("ArchiveBegin " + targetDirectory);
             MoveOutcome outcome = await _archiveCoordinator.ArchiveAsync(item, targetDirectory);
-            Log("ArchiveEnd ok=" + outcome.Ok);
             if (!outcome.Ok)
             {
                 ShowToast(outcome.Message ?? Mover.Human(outcome.Error));
@@ -1649,21 +1647,6 @@ public partial class MainWindow : Window
         ToastBorder.Visibility = Visibility.Visible;
         _toastTimer.Stop();
         _toastTimer.Start();
-    }
-
-    private static void Log(string step)
-    {
-        try
-        {
-            string directory = Path.GetDirectoryName(AppConfig.ConfigPath) ?? AppContext.BaseDirectory;
-            Directory.CreateDirectory(directory);
-            string line = $"{DateTime.Now:HH:mm:ss.fff} {step}{Environment.NewLine}";
-            File.AppendAllText(Path.Combine(directory, "logs.txt"), line);
-        }
-        catch
-        {
-            // 诊断日志失败不应影响流程。
-        }
     }
 
     private async void ToastUndo_Click(object sender, RoutedEventArgs e)
