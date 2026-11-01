@@ -539,10 +539,10 @@ public partial class MainWindow : Window
 
         _sidebarRows = _index is null
             ? new List<SidebarVideoRow>()
-            : PlayQueue.Build(
-                    _index.Items,
-                    _sidebarFilter.Length == 0 ? null : _sidebarFilter,
-                    false)
+            : _index.Items
+                .Where(item => string.Equals(
+                    item.CategoryRelativePath, _sidebarFilter, StringComparison.Ordinal))
+                .OrderBy(item => item.RelativePath, StringComparer.Ordinal)
                 .Select(item => new SidebarVideoRow
                 {
                     RelativePath = item.RelativePath,
@@ -616,10 +616,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        _queue = PlayQueue.Build(
-            _index.Items,
-            _sidebarFilter.Length == 0 ? null : _sidebarFilter,
-            false);
+        _queue = _index.Items
+            .Where(item => string.Equals(
+                item.CategoryRelativePath, _sidebarFilter, StringComparison.Ordinal))
+            .OrderBy(item => item.RelativePath, StringComparer.Ordinal)
+            .ToList();
         _queueIndex = _queue.FindIndex(item =>
             string.Equals(item.RelativePath, row.RelativePath, StringComparison.Ordinal));
         if (_queueIndex >= 0)
