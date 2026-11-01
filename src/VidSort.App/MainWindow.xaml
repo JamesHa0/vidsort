@@ -416,7 +416,8 @@
                                     Content="快速归档"
                                     FontSize="13"
                                     Style="{StaticResource FlatButtonStyle}" />
-                            <Button Grid.Column="8"
+                            <Button x:Name="FullscreenButton"
+                                    Grid.Column="8"
                                     Click="FullscreenButton_Click"
                                     Content="全屏"
                                     FontSize="13"

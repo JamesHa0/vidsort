@@ -348,8 +348,10 @@ public partial class MainWindow : Window
 
     private void FullscreenButton_Click(object sender, RoutedEventArgs e)
     {
-        EnterFullscreen();
+        ToggleFullscreen();
     }
+
+    private void ToggleFullscreen() { if (_isFullscreen) ExitFullscreen(); else EnterFullscreen(); }
 
     private void SidebarCloseButton_Click(object sender, RoutedEventArgs e) => SetSidebarVisible(false);
 
@@ -1657,7 +1659,7 @@ public partial class MainWindow : Window
                 await PlayPreviousAsync();
                 break;
             case Key.F:
-                EnterFullscreen();
+                ToggleFullscreen();
                 e.Handled = true;
                 break;
             case Key.M:
@@ -1720,6 +1722,7 @@ public partial class MainWindow : Window
         WindowState = WindowState.Normal;
         WindowState = WindowState.Maximized;
         _isFullscreen = true;
+        FullscreenButton.Content = "退出全屏";
         ShowToast("已进入全屏，按 Esc 退出");
     }
 
@@ -1735,6 +1738,7 @@ public partial class MainWindow : Window
         ResizeMode = _previousResizeMode;
         WindowState = _previousWindowState;
         _isFullscreen = false;
+        FullscreenButton.Content = "全屏";
         ShowToast("已退出全屏");
     }
 
