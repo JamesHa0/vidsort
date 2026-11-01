@@ -148,6 +148,7 @@
                           Padding="6,4"
                           Background="#FF1E1E1E"
                           Foreground="White"
+                          DisplayMemberPath="DisplayText"
                           SelectionChanged="FolderSelector_SelectionChanged">
                     <ComboBox.ItemContainerStyle>
                         <Style TargetType="ComboBoxItem">
