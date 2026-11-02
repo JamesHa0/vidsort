@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST="$ROOT/dist"
 OUT="$ROOT/release"
-ZIP="$OUT/VidSort-win-x64.zip"
+VERSION="1.0.0"
+ZIP="$OUT/VidSort-v$VERSION-win-x64.zip"
 
 if command -v dotnet >/dev/null 2>&1; then
     DOTNET_BIN="$(command -v dotnet)"
